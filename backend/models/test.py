@@ -440,11 +440,25 @@ nouveaux_clients['charge_paiement']    = nouveaux_clients['nb_retards_12m'] + no
 nouveaux_clients['stress_financier']   = nouveaux_clients['ratio_encours_ca'] * nouveaux_clients['delai_moyen_jours'] / 30
 
 # Prédiction
-probas  = model.predict_proba(nouveaux_clients[features])[:, 1]
-from scipy.stats import percentileofscore
-train_probas = model.predict_proba(X[features])[:, 1]
-scores = [int(percentileofscore(train_probas, p)) for p in probas]
-niveaux = ['ÉLEVÉ' if s>60 else 'MODÉRÉ' if s>30 else 'FAIBLE' for s in scores]
+# Score métier continu
+def compute_score_metier(row):
+    score = 50
+    score += min(row['anciennete_annees'] * 1.0, 20)
+    ratio = row['montant_encours_tnd'] / row['ca_annuel_tnd']
+    score -= min(ratio * 40, 30)
+    score -= row['nb_retards_12m'] * 2.5
+    score -= row['nb_impayes'] * 5
+    score -= row['nb_cheques_retournes'] * 4
+    score -= row['nb_litiges'] * 6
+    score -= max(0, (row['delai_moyen_jours'] - 30) * 0.3)
+    score -= max(0, (row['concentration_pct'] - 20) * 0.25)
+    return np.clip(score, 0, 100)
+
+scores_metier = nouveaux_clients.apply(compute_score_metier, axis=1).values
+probas_ml     = model.predict_proba(nouveaux_clients[features])[:, 1]
+scores_finaux = (probas_ml * 100) * 0.60 + (1 - scores_metier/100) * 100 * 0.40
+scores        = scores_finaux.astype(int).clip(1, 99)
+niveaux       = ['ÉLEVÉ' if s>60 else 'MODÉRÉ' if s>30 else 'FAIBLE' for s in scores ]
 
 print(f"{'#':<3} {'Client':<28} {'Score':>6}  {'Niveau':<8} {'Verdict attendu'}")
 print("="*72)
