@@ -26,19 +26,7 @@ export default function App() {
   return (
     <AppCtx.Provider value={{ dark, setDark, lang, setLang, t }}>
       {/* Global styles */}
-      <style>{`
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-          background: ${dark ? "#020817" : "#f8fafc"};
-          overflow-x: hidden;
-          transition: background .5s;
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        }
-        ::-webkit-scrollbar { width: 5px; }
-        ::-webkit-scrollbar-thumb { background: rgba(128,128,128,.18); border-radius: 99px; }
-        input[type=number]::-webkit-inner-spin-button { opacity: .15; }
-        input, select, button { font-family: inherit; }
-      `}</style>
+      
 
       <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
@@ -57,7 +45,7 @@ export default function App() {
       }}>
         <Header page={page} setPage={setPage} />
 
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1}}>
           {page === "scoring"   && <ScoringPage onRiskChange={setRisk} />}
           {page === "masse"     && <PlaceholderPage msg={t.masse} />}
           {page === "dashboard" && <PlaceholderPage msg={t.dash} />}

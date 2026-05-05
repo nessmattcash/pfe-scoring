@@ -253,13 +253,14 @@ export default function ScoringPage({ onRiskChange }) {
         @keyframes blink     { 0%,100%{opacity:1} 50%{opacity:.3} }
       `}</style>
 
-      <main style={{ maxWidth: 720, margin: "0 auto", padding: "44px 32px 80px" }}>
+<main style={{ maxWidth: 760, margin: "0 auto", padding: "44px 32px 80px" }}>
 
         {/* Page title */}
-        <div style={{ textAlign: "center", marginBottom: 44 }}>
+        <div style={{ textAlign: "center", marginBottom: 44, maxWidth: 720 }}>
           <h1 style={{
             fontSize: 42, fontWeight: 800, letterSpacing: "-.035em", lineHeight: 1.1,
-            color: dark ? "#f1f5f9" : "#0f172a", margin: 0
+            color: dark ? "#f1f5f9" : "#0f172a", margin: 0,
+            textAlign: "center"
           }}>
             Scoring{" "}
             <span style={{ color: accent, transition: "color .7s" }}>individuel</span>
@@ -273,7 +274,7 @@ export default function ScoringPage({ onRiskChange }) {
         </div>
 
         {/* Centered form card */}
-        <div style={{ ...card, padding: 36, marginBottom: 0 }}>
+        <div style={{ ...card, padding: 36, marginBottom: 0 , width: "100%", maxWidth: 720}}>
 
           {/* Section 01 — Profil */}
           <SecTitle n="01" label={t.s01} accent="#3b82f6" />

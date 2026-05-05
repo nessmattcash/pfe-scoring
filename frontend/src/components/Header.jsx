@@ -11,10 +11,8 @@ export default function Header({ page, setPage }) {
       borderBottom: `1px solid ${dark ? "rgba(255,255,255,0.055)" : "rgba(0,0,0,0.07)"}`,
       transition: "background 0.5s, border-color 0.5s"
     }}>
-      <div style={{
-         padding: "0 800px", width: "100%",
-        height: 60, display: "flex", alignItems: "center", justifyContent: "space-between"
-      }}>
+      <div style={{ width: "100%", padding: "0 40px", height: 60, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+
 
         {/* Logo */}
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
