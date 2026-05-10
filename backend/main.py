@@ -3,16 +3,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import joblib, numpy as np, pandas as pd
 
-app = FastAPI(title="Scoring Client STBG", version="1.0")
+app = FastAPI(title="Scoring Client STBG", version="2.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Charger les modèles
 model    = joblib.load("models/model.pkl")
 le_dict  = joblib.load("models/label_encoders.pkl")
 features = joblib.load("models/features.pkl")
@@ -35,51 +34,78 @@ class Client(BaseModel):
     type_client:          str
     banque_domiciliation: str
 
+# ── Fallbacks si "Autre" ou valeur inconnue ───────────────────────────────────
+FALLBACKS = {
+    'secteur':             'Commerce',
+    'region':              'Tunis',
+    'type_client':         'Grossiste',
+    'banque_domiciliation':'ATTIJARI'
+}
+
+# ── Score métier — plus haut = plus risqué (0-100) ────────────────────────────
 def compute_score_metier(d):
-    score = 50
-    score += min(d['anciennete_annees'] * 1.0, 20)
-    ratio  = d['montant_encours_tnd'] / d['ca_annuel_tnd']
-    score -= min(ratio * 40, 30)
-    score -= d['nb_retards_12m']       * 2.5
-    score -= d['nb_impayes']           * 5
-    score -= d['nb_cheques_retournes'] * 4
-    score -= d['nb_litiges']           * 6
-    score -= max(0, (d['delai_moyen_jours']  - 30) * 0.3)
-    score -= max(0, (d['concentration_pct']  - 20) * 0.25)
+    score = 0.0
+    ca = max(d['ca_annuel_tnd'], 1)
+
+    # Ratio encours/CA — facteur #1
+    ratio = d['montant_encours_tnd'] / ca
+    score += min(ratio * 35, 35)
+
+    # Historique paiement
+    score += d['nb_retards_12m']       * 3.0
+    score += d['nb_impayes']           * 7.0
+    score += d['nb_cheques_retournes'] * 5.0
+    score += d['nb_litiges']           * 8.0
+
+    # Délai — pénalité au-delà de 30 jours
+    score += max(0, (d['delai_moyen_jours'] - 30) * 0.45)
+
+    # Concentration — pénalité au-delà de 20%
+    score += max(0, (d['concentration_pct'] - 20) * 0.3)
+
+    # Ancienneté — facteur positif (réduit le risque)
+    score -= min(d['anciennete_annees'] * 1.2, 18)
+
     return float(np.clip(score, 0, 100))
+
 
 @app.post("/predict")
 def predict(client: Client):
     d = client.dict()
 
-    # Encoder catégorielles
+    # ── Encoder catégorielles avec fallback sur valeur inconnue
     for col in ['secteur', 'region', 'type_client', 'banque_domiciliation']:
-        d[col + '_enc'] = int(le_dict[col].transform([d[col]])[0])
+        val   = d[col]
+        known = list(le_dict[col].classes_)
+        if val not in known:
+            val = FALLBACKS[col]
+        d[col + '_enc'] = int(le_dict[col].transform([val])[0])
 
-    # Features dérivées
-    d['ratio_encours_ca']   = d['montant_encours_tnd'] / d['ca_annuel_tnd']
-    d['encours_par_traite'] = d['montant_encours_tnd'] / d['nb_traites_actives']
-    d['score_anciennete']   = 1 if d['anciennete_annees'] > 10 else 0 if d['anciennete_annees'] > 5 else -1
+    # ── Features dérivées
+    ca = max(d['ca_annuel_tnd'], 1)
+    d['ratio_encours_ca']   = d['montant_encours_tnd'] / ca
+    d['encours_par_traite'] = d['montant_encours_tnd'] / max(d['nb_traites_actives'], 1)
+    d['score_anciennete']   = 1 if d['anciennete_annees'] > 10 else (0 if d['anciennete_annees'] > 5 else -1)
     d['charge_paiement']    = d['nb_retards_12m'] + d['nb_impayes'] * 2 + d['nb_cheques_retournes'] * 3
     d['stress_financier']   = d['ratio_encours_ca'] * d['delai_moyen_jours'] / 30
 
-    # Prédiction ML
+    # ── Prédiction ML
     X        = pd.DataFrame([d])[features]
     proba_ml = float(model.predict_proba(X)[0][1])
 
-    # Score hybride 60/40
+    # ── Score hybride 60% ML + 40% règles métier
     score_metier = compute_score_metier(d)
     score_final  = int(np.clip(
-        (proba_ml * 100) * 0.60 + (1 - score_metier / 100) * 100 * 0.40,
+        proba_ml * 100 * 0.60 + score_metier * 0.40,
         1, 99
     ))
 
-    # Niveau
-    if score_final > 60:   niveau, decision = "ÉLEVÉ",  "Refuser le crédit"
+    # ── Niveau de risque
+    if   score_final > 60: niveau, decision = "ÉLEVÉ",  "Refuser le crédit"
     elif score_final > 30: niveau, decision = "MODÉRÉ", "Accorder avec garanties"
     else:                  niveau, decision = "FAIBLE",  "Accorder le crédit"
 
-    # SHAP simplifié — top facteurs
+    # ── SHAP simplifié
     shap_factors = [
         {"label": "ratio_encours_ca",    "value": round(d['ratio_encours_ca'], 3)},
         {"label": "nb_impayes",          "value": d['nb_impayes']},
@@ -90,17 +116,19 @@ def predict(client: Client):
     ]
 
     return {
-        "score":    score_final,
-        "niveau":   niveau,
-        "decision": decision,
-        "proba_ml": round(proba_ml, 4),
-        "shap":     shap_factors,
+        "score":        score_final,
+        "niveau":       niveau,
+        "decision":     decision,
+        "proba_ml":     round(proba_ml, 4),
+        "score_metier": round(score_metier, 1),
+        "shap":         shap_factors,
     }
+
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "model": "XGBoost + Règles métier"}
+    return {"status": "ok", "model": "XGBoost + Règles métier v2"}
 
 @app.get("/")
 def root():
-    return {"message": "API Scoring STBG — POST /predict pour scorer un client"}
+    return {"message": "API Scoring STBG v2 — POST /predict"}
