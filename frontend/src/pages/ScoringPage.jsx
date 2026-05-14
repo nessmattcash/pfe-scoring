@@ -1,575 +1,771 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import axios from "axios"
 import { useApp } from "../AppContext"
-import { REGIONS, SECTEURS, TYPES, BANQUES, INIT_FORM, FIELD_RULES } from "../constants/data"
+import { REGIONS, BANQUES, INIT_FORM } from "../constants/data"
 
-// ─── useScrollReveal ──────────────────────────────────────────────────────────
-function useReveal(threshold = 0.15) {
-  const ref = useRef(null)
-  const [visible, setVisible] = useState(false)
-  useEffect(() => {
-    const obs = new IntersectionObserver(
-      ([e]) => { if (e.isIntersecting) { setVisible(true); obs.disconnect() } },
-      { threshold }
-    )
-    if (ref.current) obs.observe(ref.current)
-    return () => obs.disconnect()
-  }, [threshold])
-  return [ref, visible]
+// ── Soda bottle SVG (unchanged, but bubbles disabled on small) ──────────────
+function Bottle({ fillPct = 0, color = "#f4c542", bubbles = true, size = "normal" }) {
+  const pct = Math.max(0, Math.min(100, fillPct))
+  const surfaceY = 305 - (pct / 100) * 165
+  const w = size === "small" ? 180 : 260
+  const h = size === "small" ? 360 : 520
+
+  const innerBubbles = useMemo(() =>
+    Array.from({ length: 8 }, () => ({
+      cx: 75 + Math.random() * 50,
+      r: 1.5 + Math.random() * 2.5,
+      delay: Math.random() * 3,
+      dur: 2 + Math.random() * 2,
+    })), [])
+
+  return (
+    <svg viewBox="0 0 200 400" width={w} height={h} style={{ overflow: "visible" }}>
+      <defs>
+        <linearGradient id="liq" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.95"/>
+          <stop offset="100%" stopColor={color} stopOpacity="0.7"/>
+        </linearGradient>
+        <linearGradient id="glass" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="rgba(244,197,66,0.08)"/>
+          <stop offset="50%" stopColor="rgba(244,197,66,0.02)"/>
+          <stop offset="100%" stopColor="rgba(244,197,66,0.08)"/>
+        </linearGradient>
+        <clipPath id="bclip">
+          <path d="M 70 75 L 70 110 Q 50 125, 50 160 L 50 340 Q 50 365, 75 365 L 125 365 Q 150 365, 150 340 L 150 160 Q 150 125, 130 110 L 130 75 Z"/>
+        </clipPath>
+        <filter id="bglow">
+          <feGaussianBlur stdDeviation="6" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+      </defs>
+      <ellipse cx="100" cy="370" rx="80" ry="14" fill={color} opacity={0.25*(pct/100)} filter="url(#bglow)"/>
+      <rect x="78" y="30" width="44" height="22" rx="3" fill="#7a2d3a" stroke={color} strokeWidth="1"/>
+      <rect x="80" y="34" width="40" height="2" fill={color} opacity="0.4"/>
+      <rect x="80" y="40" width="40" height="2" fill={color} opacity="0.4"/>
+      <rect x="80" y="46" width="40" height="2" fill={color} opacity="0.4"/>
+      <rect x="78" y="52" width="44" height="25" rx="2" fill="rgba(244,197,66,0.06)" stroke="rgba(244,197,66,0.25)" strokeWidth="0.8"/>
+      <path d="M 70 75 L 70 110 Q 50 125, 50 160 L 50 340 Q 50 365, 75 365 L 125 365 Q 150 365, 150 340 L 150 160 Q 150 125, 130 110 L 130 75 Z"
+        fill="url(#glass)" stroke="rgba(244,197,66,0.4)" strokeWidth="1.2"/>
+      <g clipPath="url(#bclip)">
+        <rect x="40" y={surfaceY} width="120" height="200" fill="url(#liq)"
+          style={{ transition: "y 0.8s cubic-bezier(0.2,0.7,0.2,1)" }}/>
+        <path d={`M 40 ${surfaceY} Q 60 ${surfaceY-4}, 100 ${surfaceY} T 160 ${surfaceY} L 160 ${surfaceY+8} L 40 ${surfaceY+8} Z`}
+          fill={color} opacity="0.6">
+          <animate attributeName="d" dur="3s" repeatCount="indefinite"
+            values={`M 40 ${surfaceY} Q 60 ${surfaceY-4}, 100 ${surfaceY} T 160 ${surfaceY} L 160 ${surfaceY+8} L 40 ${surfaceY+8} Z;M 40 ${surfaceY} Q 60 ${surfaceY+4}, 100 ${surfaceY} T 160 ${surfaceY} L 160 ${surfaceY+8} L 40 ${surfaceY+8} Z;M 40 ${surfaceY} Q 60 ${surfaceY-4}, 100 ${surfaceY} T 160 ${surfaceY} L 160 ${surfaceY+8} L 40 ${surfaceY+8} Z`}/>
+        </path>
+        {bubbles && pct > 5 && innerBubbles.map((b, i) => (
+          <circle key={i} cx={b.cx} r={b.r} fill="white" opacity="0.5">
+            <animate attributeName="cy" values={`365;${surfaceY+5}`} dur={`${b.dur}s`} begin={`${b.delay}s`} repeatCount="indefinite"/>
+            <animate attributeName="opacity" values="0;0.7;0" dur={`${b.dur}s`} begin={`${b.delay}s`} repeatCount="indefinite"/>
+          </circle>
+        ))}
+      </g>
+      <rect x="58" y="200" width="84" height="80" fill="rgba(10,6,18,0.6)" stroke="rgba(244,197,66,0.35)" strokeWidth="0.8" rx="2"/>
+      <text x="100" y="225" textAnchor="middle" fontFamily="DM Serif Display,serif" fontSize="14" fill={color} letterSpacing="0.5">STBG</text>
+      <line x1="68" y1="232" x2="132" y2="232" stroke={color} strokeWidth="0.5" opacity="0.6"/>
+      <text x="100" y="250" textAnchor="middle" fontFamily="JetBrains Mono,monospace" fontSize="6" fill="#b8a98c" letterSpacing="2">RISK SCORE</text>
+      <text x="100" y="270" textAnchor="middle" fontFamily="DM Serif Display,serif" fontSize="20" fill={color}>{Math.round(pct)}</text>
+      <path d="M 60 130 Q 56 230, 62 330" stroke="rgba(255,255,255,0.15)" strokeWidth="2" fill="none" strokeLinecap="round"/>
+    </svg>
+  )
 }
 
-// ─── Loader ───────────────────────────────────────────────────────────────────
-function Loader({ accent }) {
+// ── Bubble field (unchanged) ────────────────────────────────────────────────
+function BubbleField({ intensity = 1 }) {
+  const count = Math.round(20 * intensity)
+  const bubbles = useMemo(() =>
+    Array.from({ length: count }, () => ({
+      left: Math.random() * 100,
+      size: 4 + Math.random() * 16,
+      dur: 8 + Math.random() * 12,
+      delay: -Math.random() * 15,
+    })), [count])
+  if (intensity === 0) return null
   return (
-    <div style={{
-      position:"fixed",inset:0,zIndex:2000,
-      background:"rgba(4,4,12,0.9)",backdropFilter:"blur(16px)",
-      display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:28
-    }}>
-      <style>{`
-        @keyframes spin{to{transform:rotate(360deg)}}
-        @keyframes dotpulse{0%,80%,100%{transform:scale(0.5);opacity:.2}40%{transform:scale(1);opacity:1}}
-        @keyframes scanline{0%{transform:translateY(-100%)}100%{transform:translateY(100vh)}}
-      `}</style>
-
-      {/* Scanning line effect */}
-      <div style={{
-        position:"absolute",inset:0,overflow:"hidden",pointerEvents:"none"
-      }}>
-        <div style={{
-          position:"absolute",left:0,right:0,height:2,
-          background:`linear-gradient(90deg,transparent,${accent}60,transparent)`,
-          animation:"scanline 2s linear infinite"
+    <div className="bubble-field">
+      {bubbles.map((b, i) => (
+        <div key={i} className="bubble" style={{
+          left: `${b.left}%`, width: b.size, height: b.size,
+          animationDuration: `${b.dur}s`, animationDelay: `${b.delay}s`
         }}/>
-      </div>
+      ))}
+    </div>
+  )
+}
 
-      {/* Spinner */}
-      <div style={{position:"relative",width:72,height:72}}>
-        <div style={{position:"absolute",inset:0,borderRadius:"50%",border:"1px solid rgba(201,168,76,0.1)"}}/>
-        <div style={{position:"absolute",inset:0,borderRadius:"50%",border:`3px solid transparent`,borderTopColor:accent,animation:"spin .8s linear infinite"}}/>
-        <div style={{position:"absolute",inset:10,borderRadius:"50%",border:`2px solid transparent`,borderTopColor:`rgba(201,168,76,0.4)`,animation:"spin 1.4s linear infinite reverse"}}/>
-        <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <div style={{width:10,height:10,borderRadius:"50%",background:accent,boxShadow:`0 0 16px ${accent}`,animation:"dotpulse 1s ease infinite"}}/>
-        </div>
-      </div>
+// ── Number stepper (no green tick) ─────────────────────────────────────────
+function NumInput({ value, onChange, suffix, min = 0, max }) {
+  const [focused, setFocused] = useState(false)
+  const step = () => {
+    const next = Number(value) + 1
+    if (max === undefined || next <= max) onChange(next)
+  }
+  const dec = () => {
+    const next = Number(value) - 1
+    if (next >= min) onChange(next)
+  }
+  return (
+    <div className={`num-input${focused ? " focused" : ""}`}>
+      <button className="num-btn" onClick={dec} type="button" tabIndex={-1}>−</button>
+      <input
+        type="number"
+        value={value}
+        min={min}
+        max={max}
+        onChange={e => onChange(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+      />
+      {suffix && <div className="suffix">{suffix}</div>}
+      <button className="num-btn" onClick={step} type="button" tabIndex={-1}>+</button>
+    </div>
+  )
+}
 
-      <div style={{textAlign:"center"}}>
-        <div style={{fontSize:17,fontWeight:700,color:"#f1f5f9",marginBottom:8,letterSpacing:"-.01em"}}>
-          Analyse XGBoost en cours
-        </div>
-        <div style={{fontSize:13,color:"#475569",marginBottom:16}}>
-          Le modèle évalue 8 indicateurs de fiabilité…
-        </div>
-        <div style={{display:"flex",gap:8,justifyContent:"center"}}>
-          {[0,1,2,3,4].map(i=>(
-            <div key={i} style={{
-              width:5,height:5,borderRadius:"50%",background:accent,
-              animation:`dotpulse 1.2s ease-in-out ${i*.18}s infinite`
-            }}/>
+// ── Slider field ───────────────────────────────────────────────────────────
+function SliderField({ value, onChange, min = 0, max = 100, step = 1, suffix = "", ticks = [] }) {
+  const trackRef = useRef(null)
+  const [dragging, setDragging] = useState(false)
+  const pct = ((value - min) / (max - min)) * 100
+
+  const handleMove = useCallback(e => {
+    if (!trackRef.current) return
+    const rect = trackRef.current.getBoundingClientRect()
+    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left
+    const ratio = Math.max(0, Math.min(1, x / rect.width))
+    let v = min + ratio * (max - min)
+    v = Math.round(v / step) * step
+    onChange(v)
+  }, [min, max, step, onChange])
+
+  useEffect(() => {
+    if (!dragging) return
+    const move = e => handleMove(e)
+    const up = () => setDragging(false)
+    window.addEventListener("mousemove", move)
+    window.addEventListener("mouseup", up)
+    window.addEventListener("touchmove", move)
+    window.addEventListener("touchend", up)
+    return () => {
+      window.removeEventListener("mousemove", move)
+      window.removeEventListener("mouseup", up)
+      window.removeEventListener("touchmove", move)
+      window.removeEventListener("touchend", up)
+    }
+  }, [dragging, handleMove])
+
+  return (
+    <div className="slider-field">
+      <div className="slider-field-head">
+        <span className="slider-field-val">{value}{suffix}</span>
+        <span className="slider-field-range">{min} – {max}</span>
+      </div>
+      <div className="slider-track" ref={trackRef}
+        onMouseDown={e => { setDragging(true); handleMove(e) }}
+        onTouchStart={e => { setDragging(true); handleMove(e) }}>
+        <div className="slider-fill" style={{ width: `${pct}%` }}/>
+        <div className="slider-thumb" style={{ left: `${pct}%` }}/>
+      </div>
+      {ticks.length > 0 && <div className="slider-ticks">{ticks.map(t => <span key={t}>{t}</span>)}</div>}
+    </div>
+  )
+}
+
+// ── Custom Select (kept for region only) ────────────────────────────────────
+function SelectWrap({ value, onChange, options }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+  useEffect(() => {
+    const handler = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [])
+  return (
+    <div className={`custom-select${open ? " open" : ""}`} ref={ref}>
+      <button className="custom-select-trigger" type="button" onClick={() => setOpen(v => !v)}>
+        <span>{value}</span>
+        <svg className="select-chevron" viewBox="0 0 12 12" width="10" height="10">
+          <path d="M2 4 L6 8 L10 4" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round"/>
+        </svg>
+      </button>
+      {open && (
+        <div className="custom-select-dropdown">
+          {options.map(o => (
+            <button
+              key={o}
+              className={`custom-select-option${value === o ? " selected" : ""}`}
+              type="button"
+              onClick={() => { onChange(o); setOpen(false) }}
+            >
+              {o}
+              {value === o && (
+                <svg viewBox="0 0 12 12" width="10" height="10">
+                  <path d="M2 6 L5 9 L10 3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              )}
+            </button>
           ))}
         </div>
-      </div>
-    </div>
-  )
-}
-
-// ─── Score modal ──────────────────────────────────────────────────────────────
-function ScoreModal({ result, accent, onClose, t }) {
-  const [mounted, setMounted] = useState(false)
-  const [score, setScore] = useState(0)
-  const maxShap = Math.max(...result.shap.map(f => Math.abs(f.value)), 1)
-
-  useEffect(() => {
-    setMounted(true)
-    let i = 0
-    const id = setInterval(() => {
-      i++
-      setScore(Math.round(result.score * (i / 35)))
-      if (i >= 35) clearInterval(id)
-    }, 13)
-    return () => clearInterval(id)
-  }, [result.score])
-
-  const [shapW, setShapW] = useState([])
-  useEffect(() => {
-    const timers = result.shap.map((_, i) =>
-      setTimeout(() => {
-        setShapW(prev => {
-          const next = [...prev]
-          next[i] = Math.round(Math.abs(result.shap[i].value) / maxShap * 100)
-          return next
-        })
-      }, 400 + i * 80)
-    )
-    return () => timers.forEach(clearTimeout)
-  }, [])
-
-  return (
-    <div style={{
-      position:"fixed",inset:0,zIndex:1000,
-      display:"flex",alignItems:"center",justifyContent:"center",
-      background:"rgba(4,4,12,0.85)",backdropFilter:"blur(20px)",
-      padding:"20px",
-      opacity: mounted?1:0, transition:"opacity .3s"
-    }} onClick={onClose}>
-      <div style={{
-        width:"100%",maxWidth:680,maxHeight:"90vh",overflow:"auto",
-        background:"rgba(10,10,24,0.98)",
-        border:"1px solid rgba(201,168,76,0.2)",
-        borderRadius:24,
-        boxShadow:`0 0 0 1px rgba(255,255,255,0.04),0 40px 100px rgba(0,0,0,0.8),0 0 80px ${accent}15`,
-        transform: mounted?"scale(1) translateY(0)":"scale(0.95) translateY(20px)",
-        transition:"transform .4s cubic-bezier(0.34,1.56,0.64,1)",
-        overflow:"hidden"
-      }} onClick={e=>e.stopPropagation()}>
-
-        {/* Top accent bar */}
-        <div style={{height:3,background:`linear-gradient(90deg,transparent,${accent},rgba(220,38,38,0.8),transparent)`}}/>
-
-        <div style={{padding:"32px 36px 36px"}}>
-          {/* Header row */}
-          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:28}}>
-            <div>
-              <div style={{fontSize:10,letterSpacing:".18em",textTransform:"uppercase",color:"rgba(201,168,76,0.5)",marginBottom:8,fontWeight:700}}>
-                Résultat de l'analyse
-              </div>
-              <div style={{display:"flex",alignItems:"baseline",gap:12}}>
-                <span style={{
-                  fontSize:88,fontWeight:900,lineHeight:1,color:accent,
-                  textShadow:`0 0 60px ${accent}50`,
-                  fontVariantNumeric:"tabular-nums"
-                }}>{score}</span>
-                <div>
-                  <div style={{fontSize:20,color:"rgba(255,255,255,0.3)",lineHeight:1}}>/100</div>
-                  <div style={{
-                    marginTop:6,fontSize:12,fontWeight:700,padding:"4px 14px",borderRadius:99,
-                    background:`${accent}18`,color:accent,border:`1px solid ${accent}30`,
-                    display:"inline-block"
-                  }}>{result.niveau}</div>
-                </div>
-              </div>
-            </div>
-            <button onClick={onClose} style={{
-              border:"1px solid rgba(255,255,255,0.08)",borderRadius:10,
-              width:36,height:36,background:"rgba(255,255,255,0.03)",
-              cursor:"pointer",fontSize:15,color:"#475569",
-              display:"flex",alignItems:"center",justifyContent:"center",
-              transition:"all .2s",flexShrink:0
-            }}
-              onMouseEnter={e=>{e.currentTarget.style.borderColor="rgba(201,168,76,0.3)";e.currentTarget.style.color="#c9a84c"}}
-              onMouseLeave={e=>{e.currentTarget.style.borderColor="rgba(255,255,255,0.08)";e.currentTarget.style.color="#475569"}}
-            >✕</button>
-          </div>
-
-          {/* Gauge */}
-          <div style={{marginBottom:24}}>
-            <div style={{height:8,background:"rgba(255,255,255,0.05)",borderRadius:99,overflow:"hidden",position:"relative"}}>
-              <div style={{
-                position:"absolute",inset:0,
-                background:"linear-gradient(90deg,rgba(34,197,94,0.3),rgba(245,158,11,0.4),rgba(239,68,68,0.4))",
-                borderRadius:99
-              }}/>
-              <div style={{
-                position:"absolute",top:0,left:0,bottom:0,
-                width:`${result.score}%`,
-                background:`linear-gradient(90deg,#c9a84c,${accent})`,
-                borderRadius:99,boxShadow:`0 0 16px ${accent}60`,
-                transition:"width 1s cubic-bezier(0.34,1.56,0.64,1)"
-              }}/>
-            </div>
-            <div style={{display:"flex",justifyContent:"space-between",fontSize:10,marginTop:6,color:"rgba(255,255,255,0.2)"}}>
-              <span>Faible risque</span><span>Risque modéré</span><span>Risque élevé</span>
-            </div>
-          </div>
-
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:24}}>
-            {/* Decision */}
-            <div style={{
-              padding:"16px 18px",borderRadius:14,
-              background:`${accent}08`,border:`1px solid ${accent}18`
-            }}>
-              <div style={{fontSize:9,letterSpacing:".14em",textTransform:"uppercase",color:"rgba(255,255,255,0.25)",marginBottom:8,fontWeight:700}}>
-                Recommandation
-              </div>
-              <div style={{fontSize:15,fontWeight:800,color:"#f1f5f9",letterSpacing:"-.01em"}}>
-                {result.decision}
-              </div>
-            </div>
-
-            {/* Proba + score métier */}
-            <div style={{
-              padding:"16px 18px",borderRadius:14,
-              background:"rgba(255,255,255,0.02)",border:"1px solid rgba(255,255,255,0.06)"
-            }}>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
-                <span style={{fontSize:11,color:"rgba(255,255,255,0.3)"}}>Probabilité ML</span>
-                <span style={{fontSize:13,fontWeight:700,color:accent}}>{(result.proba_ml*100).toFixed(1)}%</span>
-              </div>
-              <div style={{display:"flex",justifyContent:"space-between"}}>
-                <span style={{fontSize:11,color:"rgba(255,255,255,0.3)"}}>Score métier</span>
-                <span style={{fontSize:13,fontWeight:700,color:"#c9a84c"}}>{result.score_metier ?? "—"}/100</span>
-              </div>
-            </div>
-          </div>
-
-          {/* SHAP */}
-          <div style={{marginBottom:4}}>
-            <div style={{fontSize:10,letterSpacing:".14em",textTransform:"uppercase",color:"rgba(255,255,255,0.25)",marginBottom:14,fontWeight:700}}>
-              Facteurs influents (SHAP)
-            </div>
-            {result.shap.map((f, i) => {
-              const pos = f.value > 0
-              const color = pos ? "#ef4444" : "#22c55e"
-              const w = shapW[i] || 0
-              return (
-                <div key={f.label} style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
-                  <span style={{
-                    width:140,fontSize:11,fontFamily:"monospace",
-                    color:"rgba(255,255,255,0.35)",
-                    textOverflow:"ellipsis",overflow:"hidden",whiteSpace:"nowrap",flexShrink:0
-                  }}>{f.label}</span>
-                  <div style={{flex:1,height:5,background:"rgba(255,255,255,0.04)",borderRadius:99,overflow:"hidden"}}>
-                    <div style={{
-                      height:"100%",width:`${w}%`,
-                      background:`linear-gradient(90deg,${color}60,${color})`,
-                      borderRadius:99,
-                      transition:"width .8s cubic-bezier(0.34,1.56,0.64,1)",
-                      boxShadow:`0 0 6px ${color}50`
-                    }}/>
-                  </div>
-                  <span style={{width:44,fontSize:11,color,fontWeight:700,textAlign:"right",flexShrink:0}}>
-                    {pos?"+":""}{f.value}
-                  </span>
-                </div>
-              )
-            })}
-            <div style={{display:"flex",gap:20,marginTop:10,fontSize:11,color:"rgba(255,255,255,0.25)"}}>
-              <span style={{display:"flex",alignItems:"center",gap:5}}>
-                <span style={{width:10,height:3,background:"#ef4444",display:"inline-block",borderRadius:99}}/>
-                Augmente le risque
-              </span>
-              <span style={{display:"flex",alignItems:"center",gap:5}}>
-                <span style={{width:10,height:3,background:"#22c55e",display:"inline-block",borderRadius:99}}/>
-                Réduit le risque
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ─── Section reveal wrapper ───────────────────────────────────────────────────
-function Reveal({ children, delay = 0 }) {
-  const [ref, visible] = useReveal()
-  return (
-    <div ref={ref} style={{
-      opacity: visible ? 1 : 0,
-      transform: visible ? "translateY(0)" : "translateY(24px)",
-      transition: `opacity .6s ease ${delay}s, transform .6s ease ${delay}s`
-    }}>
-      {children}
-    </div>
-  )
-}
-
-// ─── Section label ────────────────────────────────────────────────────────────
-function Sec({ label, accent, icon }) {
-  return (
-    <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
-      <div style={{
-        width:34,height:34,borderRadius:9,flexShrink:0,
-        background:`linear-gradient(135deg,${accent}20,${accent}08)`,
-        border:`1px solid ${accent}22`,
-        display:"flex",alignItems:"center",justifyContent:"center",fontSize:15
-      }}>{icon}</div>
-      <span style={{fontSize:14,fontWeight:700,color:"#e2e8f0",letterSpacing:"-.01em"}}>{label}</span>
-      <div style={{flex:1,height:1,background:`linear-gradient(90deg,${accent}25,transparent)`}}/>
-    </div>
-  )
-}
-
-// ─── Inputs ───────────────────────────────────────────────────────────────────
-function Num({ label, name, value, onChange, min, max, step=1, hint }) {
-  const [f,setF] = useState(false)
-  return (
-    <div>
-      <label style={{display:"block",fontSize:11,marginBottom:5,fontWeight:500,color:f?"#c9a84c":"#475569",transition:"color .15s"}}>
-        {label}
-      </label>
-      <input type="number" name={name} value={value} min={min} max={max} step={step}
-        onChange={onChange} onFocus={()=>setF(true)} onBlur={()=>setF(false)}
-        style={{
-          width:"100%",outline:"none",boxSizing:"border-box",
-          background:f?"rgba(201,168,76,0.04)":"rgba(255,255,255,0.025)",
-          border:`1.5px solid ${f?"rgba(201,168,76,0.45)":"rgba(255,255,255,0.06)"}`,
-          borderRadius:9,color:"#f1f5f9",fontSize:14,padding:"10px 13px",fontWeight:500,
-          boxShadow:f?"0 0 0 3px rgba(201,168,76,0.07)":"none",
-          transition:"all .15s"
-        }}/>
-      {hint && <div style={{fontSize:9,color:"rgba(255,255,255,0.2)",marginTop:4}}>{hint}</div>}
-    </div>
-  )
-}
-
-function Sel({ label, name, value, onChange, onCustomChange, customValue, options }) {
-  const { t } = useApp()
-  const [f,setF] = useState(false)
-  return (
-    <div>
-      <label style={{display:"block",fontSize:11,marginBottom:5,fontWeight:500,color:f?"#c9a84c":"#475569",transition:"color .15s"}}>
-        {label}
-      </label>
-      <div style={{position:"relative"}}>
-        <select name={name} value={value} onChange={onChange}
-          onFocus={()=>setF(true)} onBlur={()=>setF(false)}
-          style={{
-            width:"100%",outline:"none",boxSizing:"border-box",appearance:"none",
-            background:f?"rgba(201,168,76,0.04)":"rgba(255,255,255,0.025)",
-            border:`1.5px solid ${f?"rgba(201,168,76,0.45)":"rgba(255,255,255,0.06)"}`,
-            borderRadius:9,color:"#f1f5f9",fontSize:13,
-            padding:"10px 34px 10px 13px",fontWeight:500,cursor:"pointer",
-            boxShadow:f?"0 0 0 3px rgba(201,168,76,0.07)":"none",
-            transition:"all .15s"
-          }}>
-          {options.map(o=><option key={o} style={{background:"#0a0a1a"}}>{o}</option>)}
-        </select>
-        <svg style={{position:"absolute",right:11,top:"50%",transform:"translateY(-50%)",pointerEvents:"none"}}
-          width="12" height="12" viewBox="0 0 12 12" fill="none">
-          <path d="M2 4l4 4 4-4" stroke="#c9a84c" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      </div>
-      {value==="Autre" && (
-        <input type="text" value={customValue} onChange={e=>onCustomChange(e.target.value)}
-          placeholder={t.autrePh||"Précisez…"}
-          style={{
-            width:"100%",marginTop:7,outline:"none",boxSizing:"border-box",
-            background:"rgba(201,168,76,0.04)",border:"1.5px solid rgba(201,168,76,0.35)",
-            borderRadius:9,color:"#f1f5f9",fontSize:13,padding:"10px 13px",
-            boxShadow:"0 0 0 3px rgba(201,168,76,0.07)",animation:"slideDown .2s ease"
-          }}/>
       )}
     </div>
   )
 }
 
-const DIV = () => <div style={{height:1,background:"rgba(255,255,255,0.04)",margin:"28px 0"}}/>
+// ── Factor computation (live rail) ──────────────────────────────────────────
+function computeLiveFactors(form) {
+  const v = x => Math.max(0, Math.min(100, Math.round(x)))
+  return [
+    { key: "payment",   label: "Paiement",        val: v(100 - (form.nb_retards_12m / 12) * 100 - (form.delai_moyen_jours / 90) * 30) },
+    { key: "financial", label: "Santé financière", val: v(100 - (form.montant_encours_tnd / Math.max(1, form.ca_annuel_tnd * 0.4)) * 60) },
+    { key: "anciennete",label: "Ancienneté",       val: v(40 + form.anciennete_annees * 3) },
+    { key: "volume",    label: "Concentration",    val: v(100 - form.concentration_pct * 0.8) },
+    { key: "litigation",label: "Litiges",          val: v(100 - form.nb_impayes * 18 - form.nb_litiges * 12 - form.nb_cheques_retournes * 14) },
+    { key: "delay",     label: "Délais",           val: v(100 - (form.delai_moyen_jours / 90) * 100) },
+  ]
+}
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// MAIN
-// ═══════════════════════════════════════════════════════════════════════════════
+// ── Result modal (compact) ──────────────────────────────────────────────────
+function ResultModal({ result, onClose, lang }) {
+  const [animScore, setAnimScore] = useState(0)
+  const [animFill, setAnimFill] = useState(0)
+  const score = result.score
+  const color = score <= 30 ? "#5cb874" : score <= 60 ? "#e8a93d" : "#d34a4a"
+  const gradeLabel = result.niveau === "FAIBLE" ? "sain" : result.niveau === "MODÉRÉ" ? "à suivre" : "à surveiller"
+  const verdict =
+    result.niveau === "FAIBLE"
+      ? "Le profil est solide : historique de paiement régulier, ratios financiers favorables, ancienneté significative dans le portefeuille. Engagement recommandé."
+      : result.niveau === "MODÉRÉ"
+        ? "Le profil est globalement sain mais présente quelques zones de vigilance. Un suivi rapproché des délais de paiement est conseillé."
+        : "Le profil présente des signaux d'alerte significatifs : retards de paiement répétés, concentration élevée. Une revue approfondie par le comité risque est recommandée."
+
+  useEffect(() => {
+    let f = 0
+    const fIv = setInterval(() => { f += 2; setAnimFill(Math.min(score, f)); if (f >= score) clearInterval(fIv) }, 16)
+    let s = 0
+    const sIv = setInterval(() => { s += Math.max(1, Math.round((score - s) / 5)); setAnimScore(Math.min(score, s)); if (s >= score) clearInterval(sIv) }, 30)
+    return () => { clearInterval(fIv); clearInterval(sIv) }
+  }, [score])
+
+  const factors = [
+    { label: "Comportement paiement",  val: Math.max(0, 100 - result.shap.find(f => f.label === "nb_retards_12m")?.value * 8 - result.shap.find(f => f.label === "delai_moyen_jours")?.value * 0.3 || 0) },
+    { label: "Santé financière",       val: Math.max(0, 100 - (result.shap.find(f => f.label === "ratio_encours_ca")?.value || 0) * 40) },
+    { label: "Ancienneté & relation",  val: Math.min(100, 40 + (result.shap.find(f => f.label === "anciennete_annees")?.value || 0) * 3) },
+    { label: "Litiges & impayés",      val: Math.max(0, 100 - (result.shap.find(f => f.label === "nb_impayes")?.value || 0) * 18 - (result.shap.find(f => f.label === "nb_cheques_retournes")?.value || 0) * 14) },
+  ].map(f => ({ ...f, val: Math.max(0, Math.min(100, Math.round(f.val))) }))
+
+  return (
+    <div className="result-modal" onClick={e => e.stopPropagation()}>
+      <button className="result-close" onClick={onClose}>
+        <svg viewBox="0 0 14 14" width="12" height="12"><path d="M2 2 L12 12 M12 2 L2 12" stroke="currentColor" strokeWidth="1.5"/></svg>
+      </button>
+      <div className="result-bottle-panel">
+        <Bottle fillPct={animFill} color={color} bubbles={false}/>
+      </div>
+      <div className="result-info-panel">
+        <div className="result-grade-eyebrow">Score révélé · STBG</div>
+        <div className="result-score-line">
+          <span className="result-score" style={{ color }}>{animScore}</span>
+          <span className="result-score-of">/ 100</span>
+        </div>
+        <div className="result-grade">
+          Profil — <span className="italic" style={{ color }}>{gradeLabel}</span>
+        </div>
+        <p className="result-verdict">{verdict}</p>
+        <div className="result-divider"/>
+        <div className="breakdown-title">Décomposition par facteur</div>
+        <div className="breakdown-grid">
+          {factors.map((f, i) => {
+            const c = f.val >= 70 ? "#5cb874" : f.val >= 45 ? "#e8a93d" : "#d34a4a"
+            return (
+              <div key={i} className="breakdown-item">
+                <div className="breakdown-item-head">
+                  <span className="breakdown-item-label">{f.label}</span>
+                  <span className="breakdown-item-val" style={{ color: c }}>{f.val}</span>
+                </div>
+                <div className="breakdown-bar">
+                  <div className="breakdown-bar-fill" style={{ width: `${f.val}%`, background: c }}/>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        <div className="result-actions">
+          <button className="btn-primary">Générer le rapport PDF</button>
+          <button className="btn-ghost" onClick={onClose}>Fermer</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN SCORING PAGE
+// ═══════════════════════════════════════════════════════════════════════════
 export default function ScoringPage({ onRiskChange }) {
-  const { t } = useApp()
-  const [form, setForm]       = useState(INIT_FORM)
-  const [custom, setCustom]   = useState({secteur:"",region:"",type_client:"",banque_domiciliation:""})
-  const [result, setResult]   = useState(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError]     = useState(null)
-  const [risk, setRisk]       = useState("idle")
-  const [showModal, setShowModal] = useState(false)
+  const { t, lang } = useApp()
+  const [form, setForm] = useState(INIT_FORM)
+  const [result, setResult] = useState(null)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [stage, setStage] = useState("")
+  const [showResult, setShowResult] = useState(false)
+  const [error, setError] = useState(null)
+  const [risk, setRisk] = useState("idle")
 
-  const accent =
-    risk==="ÉLEVÉ"  ||risk==="HIGH"     ? "#ef4444" :
-    risk==="MODÉRÉ" ||risk==="MODERATE" ? "#f59e0b" :
-    risk==="FAIBLE" ||risk==="LOW"      ? "#22c55e" : "#c9a84c"
+  // User identity
+  const [prenom, setPrenom] = useState("")
+  const [nom, setNom] = useState("")
 
-  const hc = e => {
-    const {name,value}=e.target
-    const r=FIELD_RULES[name]
-    let v=isNaN(value)||value===""?value:Number(value)
-    if(r&&typeof v==="number") v=Math.min(r.max,Math.max(r.min,v))
-    setForm(f=>({...f,[name]:v}))
-  }
+  // "Autre" custom fields
+  const [autreSecteur, setAutreSecteur] = useState("")
+  const [autreType, setAutreType] = useState("")
+  const [autreBanque, setAutreBanque] = useState("")
+  const isAutreSecteur = form.secteur === "Autre"
+  const isAutreType = form.type_client === "Autre"
+  const isAutreBanque = form.banque_domiciliation === "Autre"
 
-  const submit = async () => {
-    setLoading(true); setError(null)
-    const payload={...form}
-    ;["secteur","region","type_client","banque_domiciliation"].forEach(k=>{
-      if(payload[k]==="Autre"&&custom[k]) payload[k]=custom[k]
-    })
+  // Full lists (matching your requirements)
+  const ALL_SECTEURS = [
+    "Commerce", "Industrie", "BTP", "Agro-alimentaire", "Distribution",
+    "Services", "Transport", "Immobilier", "Hôtellerie & Restauration",
+    "Technologie", "Santé", "Éducation", "Agriculture", "Pêche",
+    "Artisanat", "Autre"
+  ]
+  const ALL_TYPES = [
+    "Grossiste", "Détaillant", "Grande surface", "Restauration",
+    "Export", "Import-Export", "PME", "Grande entreprise",
+    "Startup", "Association", "Autre"
+  ]
+
+  // Sync custom values to form
+  useEffect(() => {
+    if (isAutreSecteur && autreSecteur.trim()) {
+      setForm(f => ({ ...f, secteur: autreSecteur.trim() }))
+    }
+  }, [autreSecteur, isAutreSecteur])
+
+  useEffect(() => {
+    if (isAutreType && autreType.trim()) {
+      setForm(f => ({ ...f, type_client: autreType.trim() }))
+    }
+  }, [autreType, isAutreType])
+
+  useEffect(() => {
+    if (isAutreBanque && autreBanque.trim()) {
+      setForm(f => ({ ...f, banque_domiciliation: autreBanque.trim() }))
+    }
+  }, [autreBanque, isAutreBanque])
+
+  // Score tracking with persistence
+  const [lastScore, setLastScore] = useState(null)
+  const [persistedScore, setPersistedScore] = useState(null)
+  const [scoreDelta, setScoreDelta] = useState(0)
+  const [flashDir, setFlashDir] = useState(null)
+  const flashTimer = useRef(null)
+
+  const up = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const liveFactors = useMemo(() => computeLiveFactors(form), [form])
+  const liveScore = useMemo(() => {
+    const avg = liveFactors.reduce((s, f) => s + f.val, 0) / liveFactors.length
+    return Math.round(avg)
+  }, [liveFactors])
+  const liquidColor = liveScore >= 70 ? "#5cb874" : liveScore >= 50 ? "#f4c542" : liveScore >= 30 ? "#e8a93d" : "#d34a4a"
+
+  // Track score changes and show delta, and update persisted score
+  useEffect(() => {
+    if (lastScore === null) {
+      setLastScore(liveScore)
+      setPersistedScore(liveScore)
+      return
+    }
+    if (liveScore !== lastScore) {
+      const delta = liveScore - lastScore
+      setScoreDelta(delta)
+      setFlashDir(delta > 0 ? "up" : "down")
+      setLastScore(liveScore)
+      setPersistedScore(liveScore)
+      if (flashTimer.current) clearTimeout(flashTimer.current)
+      flashTimer.current = setTimeout(() => {
+        setFlashDir(null)
+        setScoreDelta(0)
+      }, 1800)
+    }
+  }, [liveScore])
+
+  // Progress ring
+  const filledRatio = useMemo(() => {
+    const fields = ["montant_encours_tnd", "ca_annuel_tnd", "anciennete_annees", "nb_retards_12m", "nb_impayes", "delai_moyen_jours", "nb_cheques_retournes", "concentration_pct"]
+    return fields.filter(k => Number(form[k]) > 0).length / fields.length
+  }, [form])
+
+  const stages = [
+    { until: 25,  msg: "PROFIL CLIENT" },
+    { until: 50,  msg: "DONNÉES FINANCIÈRES" },
+    { until: 72,  msg: "HISTORIQUE PAIEMENT" },
+    { until: 88,  msg: "MODÈLE XGBOOST" },
+    { until: 100, msg: "RÈGLES MÉTIER" },
+  ]
+
+  const handleAnalyze = async () => {
+    setAnalyzing(true); setError(null); setProgress(0)
+    let p = 0
+    const iv = setInterval(() => {
+      p += 2 + Math.random() * 3
+      const s = stages.find(st => p <= st.until)
+      setStage(s?.msg || "RÈGLES MÉTIER")
+      setProgress(Math.min(92, p))
+    }, 60)
     try {
-      const {data}=await axios.post("http://127.0.0.1:8000/predict",payload)
-      setResult(data); setRisk(data.niveau); setShowModal(true)
-      if(onRiskChange) onRiskChange(data.niveau)
-    } catch { setError(t.err) }
-    setLoading(false)
+      const { data } = await axios.post("http://127.0.0.1:8000/predict", form)
+      clearInterval(iv)
+      setProgress(100)
+      setStage("TERMINÉ")
+      setTimeout(() => {
+        setAnalyzing(false)
+        setResult(data)
+        setRisk(data.niveau)
+        setShowResult(true)
+        if (onRiskChange) onRiskChange(data.niveau)
+      }, 500)
+    } catch {
+      clearInterval(iv)
+      setAnalyzing(false)
+      setError(t.err)
+    }
   }
 
-  const reset = () => {
+  const handleReset = () => {
     setForm(INIT_FORM)
-    setCustom({secteur:"",region:"",type_client:"",banque_domiciliation:""})
-    setResult(null); setRisk("idle"); setShowModal(false); setError(null)
-    if(onRiskChange) onRiskChange("idle")
+    setResult(null); setRisk("idle"); setShowResult(false); setError(null)
+    setPrenom(""); setNom("")
+    setAutreSecteur(""); setAutreType(""); setAutreBanque("")
+    setLastScore(null); setPersistedScore(null); setScoreDelta(0); setFlashDir(null)
+    if (onRiskChange) onRiskChange("idle")
   }
+
+  // Scroll reveal
+  useEffect(() => {
+    const els = document.querySelectorAll(".reveal")
+    const io = new IntersectionObserver(entries => {
+      entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target) } })
+    }, { threshold: 0.08, rootMargin: "0px 0px -40px 0px" })
+    els.forEach(el => io.observe(el))
+    return () => io.disconnect()
+  }, [])
+
+  const Icon = {
+    profile:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>,
+    financial: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M3 21h18M5 21V9m4 12V5m4 16v-9m4 9v-7m4 7v-4"/></svg>,
+    history:   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 7v5l3 2"/><circle cx="12" cy="12" r="9"/></svg>,
+    arrow:     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M5 12h14M13 6l6 6-6 6"/></svg>,
+    user:      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg>,
+  }
+
+  const riskLabel = persistedScore !== null
+    ? (persistedScore >= 70 ? "FAIBLE" : persistedScore >= 50 ? "MODÉRÉ" : "ÉLEVÉ")
+    : (liveScore >= 70 ? "FAIBLE" : liveScore >= 50 ? "MODÉRÉ" : "ÉLEVÉ")
 
   return (
     <>
-      <style>{`
-        @keyframes slideDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
-        @keyframes fadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        @keyframes dotpulse{0%,80%,100%{transform:scale(.5);opacity:.2}40%{transform:scale(1);opacity:1}}
-        @keyframes scanline{0%{transform:translateY(-100%)}100%{transform:translateY(100vh)}}
-        @keyframes pulseGold{0%,100%{box-shadow:0 0 0 0 rgba(201,168,76,0.4)}70%{box-shadow:0 0 0 8px rgba(201,168,76,0)}}
-        .submit-btn:hover{transform:translateY(-2px)!important;box-shadow:0 10px 36px rgba(201,168,76,0.45)!important}
-        .submit-btn:active{transform:scale(0.98)!important}
-        .reset-btn:hover{border-color:rgba(201,168,76,0.3)!important;color:#c9a84c!important}
-        input[type=number]::-webkit-inner-spin-button{opacity:.15}
-      `}</style>
+      <BubbleField intensity={1}/>
 
-      {loading && <Loader accent={accent}/>}
-      {showModal && result && (
-        <ScoreModal result={result} accent={accent} onClose={()=>setShowModal(false)} t={t}/>
-      )}
-
-      <main style={{maxWidth:900,margin:"0 auto",padding:"56px 28px 120px"}}>
-
-        {/* ── Hero section */}
-        <div style={{textAlign:"center",marginBottom:64,animation:"fadeIn .7s ease"}}>
-          <div style={{
-            display:"inline-flex",alignItems:"center",gap:8,
-            padding:"7px 20px",borderRadius:99,marginBottom:28,
-            background:"linear-gradient(135deg,rgba(201,168,76,0.1),rgba(220,38,38,0.07))",
-            border:"1px solid rgba(201,168,76,0.18)"
-          }}>
-            <div style={{width:7,height:7,borderRadius:"50%",background:"#22c55e",
-              animation:"pulseGold 2s infinite",boxShadow:"0 0 8px #22c55e"}}/>
-            <span style={{
-              fontSize:12,fontWeight:700,
-              background:"linear-gradient(90deg,#c9a84c,#f59e0b)",
-              WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"
-            }}>
-              Système de scoring actif — STBG Mégrine
-            </span>
+      <section className="form-section">
+        <div className="container">
+          <div className="reveal section-eyebrow">
+            <span className="num">02</span><span className="line"/>Scoring
           </div>
+          <h2 className="reveal reveal-d1 section-title">
+            Renseignez le profil,{" "}
+            <span className="gold">le score se construit en direct</span>
+          </h2>
 
-          <h1 style={{
-            fontSize:52,fontWeight:900,letterSpacing:"-.04em",lineHeight:1.05,
-            color:"#f1f5f9",margin:"0 0 20px"
-          }}>
-            Évaluation du risque{" "}
-            <span style={{
-              background:`linear-gradient(90deg,#c9a84c,${accent})`,
-              WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",
-              transition:"all .6s"
-            }}>client</span>
-          </h1>
-
-          <p style={{
-            fontSize:16,color:"rgba(255,255,255,0.35)",
-            lineHeight:1.8,maxWidth:540,margin:"0 auto"
-          }}>
-            Modèle XGBoost hybride · 60% Machine Learning · 40% règles métier.<br/>
-            Analyse basée sur <strong style={{color:"rgba(201,168,76,0.7)"}}>8 indicateurs</strong> de fiabilité client.
-          </p>
-        </div>
-
-        {/* ── Form */}
-        <Reveal>
-          <div style={{
-            background:"rgba(8,8,20,0.82)",
-            border:"1px solid rgba(201,168,76,0.1)",
-            borderRadius:24,
-            backdropFilter:"blur(24px)",
-            boxShadow:"0 0 0 1px rgba(255,255,255,0.025),0 32px 80px rgba(0,0,0,0.6)",
-            overflow:"hidden"
-          }}>
-            <div style={{height:2,background:`linear-gradient(90deg,transparent,#c9a84c,#ef4444,transparent)`}}/>
-
-            <div style={{padding:"40px 44px 44px"}}>
-
-              <Reveal delay={0.1}>
-                <Sec label="Profil client" accent="#c9a84c" icon="🏢"/>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:4}}>
-                  <Sel label={t.secteur} name="secteur" value={form.secteur} onChange={hc}
-                    customValue={custom.secteur} onCustomChange={v=>setCustom(c=>({...c,secteur:v}))} options={SECTEURS}/>
-                  <Sel label={t.type} name="type_client" value={form.type_client} onChange={hc}
-                    customValue={custom.type_client} onCustomChange={v=>setCustom(c=>({...c,type_client:v}))} options={TYPES}/>
-                  <Sel label={t.region} name="region" value={form.region} onChange={hc}
-                    customValue={custom.region} onCustomChange={v=>setCustom(c=>({...c,region:v}))} options={REGIONS}/>
-                  <Sel label={t.banque} name="banque_domiciliation" value={form.banque_domiciliation} onChange={hc}
-                    customValue={custom.banque_domiciliation} onCustomChange={v=>setCustom(c=>({...c,banque_domiciliation:v}))} options={BANQUES}/>
+          <div className="reveal reveal-d2 form-shell">
+            {/* LEFT: Form */}
+            <div className="form-card">
+              {/* Identity block */}
+              <div className="form-block">
+                <div className="form-block-head">
+                  <div className="form-block-icon">{Icon.user}</div>
+                  <div className="form-block-title">Identité</div>
+                  <div className="form-block-num">00 / 03</div>
                 </div>
-              </Reveal>
-
-              <DIV/>
-
-              <Reveal delay={0.15}>
-                <Sec label="Données financières" accent="#3b82f6" icon="💰"/>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16}}>
-                  <Num label={t.encours}  name="montant_encours_tnd"  value={form.montant_encours_tnd}  onChange={hc} min={0}  max={5000000}  step={1000} hint="Montant en dinars tunisiens"/>
-                  <Num label={t.ca}       name="ca_annuel_tnd"        value={form.ca_annuel_tnd}        onChange={hc} min={1}  max={50000000} step={10000} hint="Chiffre d'affaires annuel"/>
-                  <Num label={t.anc}      name="anciennete_annees"    value={form.anciennete_annees}    onChange={hc} min={0}  max={50} hint="Années de relation client"/>
-                  <Num label={t.traites}  name="nb_traites_actives"   value={form.nb_traites_actives}   onChange={hc} min={1}  max={100}/>
-                  <Num label={t.moy}      name="montant_moyen_traite" value={form.montant_moyen_traite} onChange={hc} min={0}  max={2000000} step={1000}/>
-                  <Num label={t.contrats} name="nb_contrats_actifs"   value={form.nb_contrats_actifs}   onChange={hc} min={1}  max={50}/>
+                <div className="field-grid">
+                  <div className="field">
+                    <label className="field-label">Prénom</label>
+                    <input className="text-input" type="text" placeholder="Jean" value={prenom} onChange={e => setPrenom(e.target.value)}/>
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Nom</label>
+                    <input className="text-input" type="text" placeholder="Dupont" value={nom} onChange={e => setNom(e.target.value)}/>
+                  </div>
                 </div>
-              </Reveal>
+              </div>
 
-              <DIV/>
-
-              <Reveal delay={0.2}>
-                <Sec label="Historique de paiement" accent="#ef4444" icon="⚠️"/>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16,marginBottom:40}}>
-                  <Num label={t.ret}  name="nb_retards_12m"       value={form.nb_retards_12m}       onChange={hc} min={0} max={50}  hint="Nb retards sur 12 mois"/>
-                  <Num label={t.imp}  name="nb_impayes"           value={form.nb_impayes}           onChange={hc} min={0} max={20}  hint="Factures non réglées"/>
-                  <Num label={t.delai} name="delai_moyen_jours"   value={form.delai_moyen_jours}    onChange={hc} min={0} max={365} hint="Jours moyens de paiement"/>
-                  <Num label={t.cheq} name="nb_cheques_retournes" value={form.nb_cheques_retournes} onChange={hc} min={0} max={20}  hint="Chèques sans provision"/>
-                  <Num label={t.lit}  name="nb_litiges"           value={form.nb_litiges}           onChange={hc} min={0} max={20}  hint="Litiges en cours"/>
-                  <Num label={t.conc} name="concentration_pct"    value={form.concentration_pct}    onChange={hc} min={0} max={100} hint="% du CA chez STBG"/>
+              {/* Profile block – chip grids for secteur & type */}
+              <div className="form-block">
+                <div className="form-block-head">
+                  <div className="form-block-icon">{Icon.profile}</div>
+                  <div className="form-block-title">Profil client</div>
+                  <div className="form-block-num">01 / 03</div>
                 </div>
+                <div className="field-grid">
+                  <div className="field" style={{ gridColumn: "span 2" }}>
+                    <label className="field-label">Secteur d'activité</label>
+                    <div className="chip-grid">
+                      {ALL_SECTEURS.map(s => (
+                        <button
+                          key={s}
+                          className={`chip ${form.secteur === s ? 'chip-active' : ''}`}
+                          onClick={() => {
+                            up("secteur", s)
+                            if (s !== "Autre") setAutreSecteur("")
+                          }}
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                    {isAutreSecteur && (
+                      <div className="autre-input-wrap">
+                        <input
+                          className="text-input"
+                          type="text"
+                          placeholder="Précisez votre secteur…"
+                          value={autreSecteur}
+                          onChange={e => setAutreSecteur(e.target.value)}
+                          autoFocus
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <div className="field" style={{ gridColumn: "span 2" }}>
+                    <label className="field-label">Type client</label>
+                    <div className="chip-grid">
+                      {ALL_TYPES.map(t => (
+                        <button
+                          key={t}
+                          className={`chip ${form.type_client === t ? 'chip-active' : ''}`}
+                          onClick={() => {
+                            up("type_client", t)
+                            if (t !== "Autre") setAutreType("")
+                          }}
+                        >
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                    {isAutreType && (
+                      <div className="autre-input-wrap">
+                        <input
+                          className="text-input"
+                          type="text"
+                          placeholder="Précisez le type…"
+                          value={autreType}
+                          onChange={e => setAutreType(e.target.value)}
+                          autoFocus
+                        />
+                      </div>
+                    )}
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Région</label>
+                    <SelectWrap value={form.region} onChange={v => up("region", v)} options={REGIONS}/>
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Banque domiciliataire</label>
+                    <div className="chip-grid">
+                      {BANQUES.map(b => (
+                        <button
+                          key={b}
+                          className={`chip ${form.banque_domiciliation === b ? 'chip-active' : ''}`}
+                          onClick={() => {
+                            up("banque_domiciliation", b)
+                            if (b !== "Autre") setAutreBanque("")
+                          }}
+                        >
+                          {b}
+                        </button>
+                      ))}
+                    </div>
+                    {isAutreBanque && (
+                      <div className="autre-input-wrap">
+                        <input
+                          className="text-input"
+                          type="text"
+                          placeholder="Autre banque…"
+                          value={autreBanque}
+                          onChange={e => setAutreBanque(e.target.value)}
+                          autoFocus
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
 
-                {/* Actions */}
-                <div style={{display:"flex",gap:12}}>
-                  <button className="submit-btn" onClick={submit} disabled={loading} style={{
-                    flex:1,border:"none",cursor:"pointer",
-                    fontFamily:"inherit",fontWeight:800,fontSize:15,
-                    padding:"17px 28px",borderRadius:14,
-                    background:"linear-gradient(135deg,#92700a,#c9a84c,#d97706)",
-                    color:"#0a0a1a",
-                    display:"flex",alignItems:"center",justifyContent:"center",gap:10,
-                    boxShadow:"0 4px 24px rgba(201,168,76,0.3),0 0 0 1px rgba(201,168,76,0.15)",
-                    transition:"all .25s",letterSpacing:"-.01em"
+              {/* Financial block (unchanged) */}
+              <div className="form-block">
+                <div className="form-block-head">
+                  <div className="form-block-icon" style={{ color: "var(--gold)", borderColor: "rgba(244,197,66,0.4)", background: "rgba(244,197,66,0.08)" }}>{Icon.financial}</div>
+                  <div className="form-block-title">Données financières</div>
+                  <div className="form-block-num">02 / 03</div>
+                </div>
+                <div className="field-grid-3">
+                  <div className="field">
+                    <label className="field-label">Encours (TND)</label>
+                    <NumInput value={form.montant_encours_tnd} onChange={v => up("montant_encours_tnd", Number(v))} suffix="TND" min={0}/>
+                    <div className="field-hint">Montant en cours bancaire</div>
+                  </div>
+                  <div className="field">
+                    <label className="field-label">CA annuel (TND)</label>
+                    <NumInput value={form.ca_annuel_tnd} onChange={v => up("ca_annuel_tnd", Number(v))} suffix="TND" min={0}/>
+                    <div className="field-hint">Chiffre d'affaires annuel</div>
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Ancienneté (ans)</label>
+                    <SliderField value={form.anciennete_annees} onChange={v => up("anciennete_annees", v)} min={0} max={30} step={1} suffix=" ans" ticks={["0", "10", "20", "30"]}/>
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Traites actives</label>
+                    <NumInput value={form.nb_traites_actives} onChange={v => up("nb_traites_actives", Number(v))} min={0}/>
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Montant moy. traite</label>
+                    <NumInput value={form.montant_moyen_traite} onChange={v => up("montant_moyen_traite", Number(v))} suffix="TND" min={0}/>
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Contrats actifs</label>
+                    <NumInput value={form.nb_contrats_actifs} onChange={v => up("nb_contrats_actifs", Number(v))} min={0}/>
+                  </div>
+                </div>
+              </div>
+
+              {/* History block (unchanged) */}
+              <div className="form-block">
+                <div className="form-block-head">
+                  <div className="form-block-icon" style={{ color: "var(--burgundy-soft)", borderColor: "rgba(168,64,79,0.4)", background: "rgba(168,64,79,0.08)" }}>{Icon.history}</div>
+                  <div className="form-block-title">Historique de paiement</div>
+                  <div className="form-block-num">03 / 03</div>
+                </div>
+                <div className="field-grid-3">
+                  <div className="field">
+                    <label className="field-label">Retards 12 mois</label>
+                    <SliderField value={form.nb_retards_12m} onChange={v => up("nb_retards_12m", v)} min={0} max={12} step={1} ticks={["0", "6", "12"]}/>
+                    <div className="field-hint">Effectués sur 12 mois</div>
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Impayés</label>
+                    <SliderField value={form.nb_impayes} onChange={v => up("nb_impayes", v)} min={0} max={10} step={1} ticks={["0", "5", "10"]}/>
+                    <div className="field-hint">Factures non réglées</div>
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Délai moy. paiement (j)</label>
+                    <NumInput value={form.delai_moyen_jours} onChange={v => up("delai_moyen_jours", Number(v))} suffix="j" min={0}/>
+                    <div className="field-hint">Jours moyens de paiement</div>
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Chèques retournés</label>
+                    <SliderField value={form.nb_cheques_retournes} onChange={v => up("nb_cheques_retournes", v)} min={0} max={10} step={1} ticks={["0", "5", "10"]}/>
+                    <div className="field-hint">Chèques sans provision</div>
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Litiges en cours</label>
+                    <NumInput value={form.nb_litiges} onChange={v => up("nb_litiges", Number(v))} min={0}/>
+                  </div>
+                  <div className="field">
+                    <label className="field-label">Concentration (%)</label>
+                    <SliderField value={form.concentration_pct} onChange={v => up("concentration_pct", v)} min={0} max={100} step={1} suffix="%" ticks={["0", "50", "100"]}/>
+                    <div className="field-hint">% du CA chez STBG</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Submit row – NO reset button, smaller submit */}
+              <div className="submit-row">
+                <button className="submit-btn" onClick={handleAnalyze} disabled={analyzing} type="button">
+                  <svg className="submit-ring" viewBox="0 0 24 24">
+                    <circle className="track" cx="12" cy="12" r="9"/>
+                    <circle className="indicator" cx="12" cy="12" r="9"
+                      strokeDasharray={`${2 * Math.PI * 9}`}
+                      strokeDashoffset={`${2 * Math.PI * 9 * (1 - filledRatio)}`}/>
+                  </svg>
+                  <span>Analyser le risque</span>
+                  {Icon.arrow}
+                </button>
+                {/* Reset button removed */}
+              </div>
+
+              {error && (
+                <div style={{ marginTop: 16, padding: "12px 16px", background: "rgba(211,74,74,0.08)", border: "1px solid rgba(211,74,74,0.25)", borderRadius: 10, fontSize: 13, color: "#d34a4a" }}>
+                  ⚠ {error}
+                </div>
+              )}
+            </div>
+
+            {/* RIGHT: Live risk rail – uses persistedScore */}
+            <div className="risk-rail">
+              <div className="risk-card">
+                <div className="risk-card-head">
+                  <div className="risk-card-title">Score en direct</div>
+                  <div className="risk-card-live"><span className="dot"/>LIVE</div>
+                </div>
+                <div className="bottle-mini">
+                  <Bottle fillPct={persistedScore ?? liveScore} color={liquidColor} bubbles={false} size="small"/>
+                </div>
+                <div className="risk-readout">
+                  <div className={`risk-readout-score${flashDir ? ` flash-${flashDir}` : ""}`} style={{ color: liquidColor }}>
+                    {persistedScore ?? liveScore}<span className="of"> / 100</span>
+                  </div>
+                  {flashDir && scoreDelta !== 0 && (
+                    <div className={`score-delta score-delta-${flashDir}`}>
+                      {flashDir === "up" ? "+" : ""}{scoreDelta}
+                    </div>
+                  )}
+                  <div className="risk-readout-grade" style={{
+                    background: `${liquidColor}22`, color: liquidColor, border: `1px solid ${liquidColor}55`
                   }}>
-                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                      <path d="M8 2a6 6 0 100 12A6 6 0 008 2zm-1 3v4l3 2" stroke="#0a0a1a" strokeWidth="1.5" strokeLinecap="round"/>
-                    </svg>
-                    Analyser le risque
-                  </button>
-
-                  <button className="reset-btn" onClick={reset} style={{
-                    border:"1.5px solid rgba(255,255,255,0.07)",borderRadius:14,
-                    padding:"17px 24px",background:"rgba(255,255,255,0.02)",
-                    cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:14,
-                    color:"rgba(255,255,255,0.3)",transition:"all .2s"
-                  }}>{t.reset}</button>
+                    {riskLabel}
+                  </div>
                 </div>
-
-                {error && (
-                  <div style={{marginTop:16,padding:"12px 16px",background:"rgba(239,68,68,0.07)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:10,fontSize:13,color:"#fca5a5"}}>
-                    ⚠ {error}
-                  </div>
-                )}
-
-                {/* Last result quick view */}
-                {result && !showModal && (
-                  <div style={{
-                    marginTop:16,padding:"12px 18px",
-                    background:`${accent}08`,border:`1px solid ${accent}20`,borderRadius:12,
-                    display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"
-                  }} onClick={()=>setShowModal(true)}>
-                    <span style={{fontSize:13,color:"rgba(255,255,255,0.4)"}}>
-                      Dernier résultat : <strong style={{color:accent}}>Score {result.score} — {result.niveau}</strong>
-                    </span>
-                    <span style={{fontSize:11,color:accent}}>Voir →</span>
-                  </div>
-                )}
-              </Reveal>
+                <div className="factor-list">
+                  {liveFactors.map(f => {
+                    const c = f.val >= 70 ? "var(--green)" : f.val >= 45 ? "var(--amber)" : "var(--red)"
+                    return (
+                      <div key={f.key} className="factor">
+                        <div className="factor-label">{f.label}</div>
+                        <div className="factor-bar"><div className="factor-bar-fill" style={{ width: `${f.val}%`, background: c }}/></div>
+                        <div className="factor-val">{f.val}</div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
             </div>
           </div>
-        </Reveal>
-      </main>
+        </div>
+      </section>
+
+      {/* Takeover loader */}
+      <div className={`takeover${analyzing ? " open" : ""}`}>
+        <div className="takeover-inner">
+          <Bottle fillPct={progress} color={liquidColor} bubbles={false}/>
+          <div className="takeover-text">Analyse en cours…</div>
+          <div className="takeover-progress">
+            <div className="takeover-progress-fill" style={{ width: `${progress}%` }}/>
+          </div>
+          <div className="takeover-status">{stage} · {Math.round(progress)}%</div>
+        </div>
+      </div>
+
+      {/* Result modal */}
+      <div className={`result-overlay${showResult ? " open" : ""}`}
+        onClick={e => { if (e.target.classList.contains("result-overlay")) setShowResult(false) }}>
+        {showResult && result && (
+          <ResultModal result={result} onClose={() => setShowResult(false)} lang={lang}/>
+        )}
+      </div>
     </>
   )
 }
