@@ -1,7 +1,9 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import joblib, numpy as np, pandas as pd
+import csv, io
+
 
 app = FastAPI(title="Scoring Client STBG", version="2.0")
 
@@ -122,6 +124,112 @@ def predict(client: Client):
         "proba_ml":     round(proba_ml, 4),
         "score_metier": round(score_metier, 1),
         "shap":         shap_factors,
+    }
+
+@app.post("/batch_predict")
+async def batch_predict(file: UploadFile = File(...)):
+    """
+    Scoring en masse à partir d'un fichier CSV.
+    Colonnes obligatoires : identiques à Client (voir modèle Pydantic).
+    Retourne le CSV enrichi avec score, niveau, decision, proba_ml, score_metier.
+    """
+    # 1. Lire le CSV
+    try:
+        contents = await file.read()
+        # Détection automatique de l'encodage (support UTF-8 avec BOM)
+        try:
+            df = pd.read_csv(io.StringIO(contents.decode("utf-8")))
+        except UnicodeDecodeError:
+            df = pd.read_csv(io.StringIO(contents.decode("latin-1")))
+    except Exception as e:
+        raise HTTPException(400, f"Erreur de lecture CSV : {str(e)}")
+
+    # 2. Vérifier les colonnes minimales requises (celles du modèle Pydantic)
+    required_cols = [
+        "anciennete_annees", "nb_contrats_actifs", "montant_encours_tnd",
+        "ca_annuel_tnd", "nb_traites_actives", "montant_moyen_traite",
+        "nb_retards_12m", "nb_impayes", "delai_moyen_jours",
+        "concentration_pct", "nb_cheques_retournes", "nb_litiges",
+        "secteur", "region", "type_client", "banque_domiciliation"
+    ]
+    missing = [col for col in required_cols if col not in df.columns]
+    if missing:
+        raise HTTPException(400, f"Colonnes manquantes : {missing}")
+
+    # 3. Remplir les valeurs manquantes éventuelles (par sécurité)
+    df = df.fillna({
+        "nb_contrats_actifs": 0,
+        "nb_traites_actives": 0,
+        "montant_moyen_traite": 0,
+        "nb_retards_12m": 0,
+        "nb_impayes": 0,
+        "nb_cheques_retournes": 0,
+        "nb_litiges": 0,
+        "concentration_pct": 0.0,
+    })
+
+    # 4. Appliquer le scoring ligne par ligne (réutilise la fonction existante)
+    results = []
+    for idx, row in df.iterrows():
+        d = row.to_dict()
+        # --- Encodage des variables catégorielles avec fallback ---
+        for col in ['secteur', 'region', 'type_client', 'banque_domiciliation']:
+            val = d[col]
+            known = list(le_dict[col].classes_)
+            if val not in known:
+                val = FALLBACKS.get(col, known[0] if known else 'Tunis')
+            d[col + '_enc'] = int(le_dict[col].transform([val])[0])
+            d[col] = val   # on garde la valeur originale pour l'affichage
+
+        # --- Features dérivées (identique à /predict) ---
+        ca = max(d['ca_annuel_tnd'], 1)
+        d['ratio_encours_ca']   = d['montant_encours_tnd'] / ca
+        d['encours_par_traite'] = d['montant_encours_tnd'] / max(d['nb_traites_actives'], 1)
+        d['score_anciennete']   = 1 if d['anciennete_annees'] > 10 else (0 if d['anciennete_annees'] > 5 else -1)
+        d['charge_paiement']    = d['nb_retards_12m'] + d['nb_impayes'] * 2 + d['nb_cheques_retournes'] * 3
+        d['stress_financier']   = d['ratio_encours_ca'] * d['delai_moyen_jours'] / 30
+
+        # --- Prédiction ML ---
+        X = pd.DataFrame([d])[features]
+        proba_ml = float(model.predict_proba(X)[0][1])
+
+        # --- Score métier ---
+        score_metier = compute_score_metier(d)
+
+        # --- Score hybride ---
+        score_final = int(np.clip(proba_ml * 100 * 0.60 + score_metier * 0.40, 1, 99))
+
+        # --- Niveau et décision ---
+        if score_final > 60:
+            niveau, decision = "ÉLEVÉ", "Refuser le crédit"
+        elif score_final > 30:
+            niveau, decision = "MODÉRÉ", "Accorder avec garanties"
+        else:
+            niveau, decision = "FAIBLE", "Accorder le crédit"
+
+        # Stockage
+        results.append({
+            **d,   # toutes les colonnes originales + dérivées (optionnel)
+            "score": score_final,
+            "niveau": niveau,
+            "decision": decision,
+            "proba_ml": round(proba_ml, 4),
+            "score_metier": round(score_metier, 1),
+        })
+
+    # 5. Construire le DataFrame de sortie (uniquement colonnes utiles)
+    out_df = pd.DataFrame(results)
+    # On garde les colonnes d'origine + les 5 nouvelles
+    output_cols = required_cols + ["score", "niveau", "decision", "proba_ml", "score_metier"]
+    out_df = out_df[output_cols]
+
+    # 6. Sauvegarde persistante (optionnelle mais utile pour le dashboard)
+    out_df.to_csv("resultats_scoring.csv", index=False, encoding="utf-8")
+
+    # 7. Retour JSON (le frontend l'attend)
+    return {
+        "predictions": out_df.to_dict(orient="records"),
+        "total": len(out_df)
     }
 
 
