@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"  
+import { useState, useEffect } from "react"
 import { AppCtx } from "./AppContext"
 import { TRANSLATIONS } from "./constants/data"
 import Aurora from "./components/Aurora"
@@ -6,19 +6,7 @@ import Header from "./components/Header"
 import Footer from "./components/Footer"
 import ScoringPage from "./pages/ScoringPage"
 import MassScoringPage from "./pages/MassScoringPage"
-
-function PlaceholderPage({ msg }) {
-  return (
-    <div style={{ maxWidth:1280, margin:"0 auto", padding:"160px 40px 100px", textAlign:"center" }}>
-      <div style={{ fontFamily:"var(--serif)", fontSize:48, color:"var(--gold)", marginBottom:16, opacity:.4 }}>
-        Bientôt
-      </div>
-      <div style={{ fontFamily:"var(--mono)", fontSize:13, color:"var(--ink-mute)", letterSpacing:"2px" }}>
-        {msg}
-      </div>
-    </div>
-  )
-}
+import DashboardPage from "./pages/DashboardPage"
 
 export default function App() {
   const [lang, setLang] = useState("fr")
@@ -26,20 +14,15 @@ export default function App() {
   const [risk, setRisk] = useState("idle")
   const t = TRANSLATIONS[lang]
 
-  // Synchronisation avec le hash de l'URL
   useEffect(() => {
     const hash = window.location.hash.slice(1)
-    if (hash === "scoring" || hash === "masse" || hash === "dashboard") {
-      setPage(hash)
+    if (["scoring","masse","dashboard"].includes(hash)) setPage(hash)
+    const fn = () => {
+      const h = window.location.hash.slice(1)
+      if (["scoring","masse","dashboard"].includes(h)) setPage(h)
     }
-    const onHashChange = () => {
-      const newHash = window.location.hash.slice(1)
-      if (newHash === "scoring" || newHash === "masse" || newHash === "dashboard") {
-        setPage(newHash)
-      }
-    }
-    window.addEventListener("hashchange", onHashChange)
-    return () => window.removeEventListener("hashchange", onHashChange)
+    window.addEventListener("hashchange", fn)
+    return () => window.removeEventListener("hashchange", fn)
   }, [])
 
   return (
@@ -49,8 +32,8 @@ export default function App() {
       <Header page={page} setPage={setPage}/>
       <main style={{ position:"relative", zIndex:2, paddingTop:80 }}>
         {page==="scoring"   && <ScoringPage onRiskChange={setRisk}/>}
-        {page === "masse" && <MassScoringPage />}
-        {page==="dashboard" && <PlaceholderPage msg="DASHBOARD ANALYTIQUE · BIENTÔT DISPONIBLE"/>}
+        {page==="masse"     && <MassScoringPage/>}
+        {page==="dashboard" && <DashboardPage/>}
       </main>
       <Footer setPage={setPage}/>
     </AppCtx.Provider>

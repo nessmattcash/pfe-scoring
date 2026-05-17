@@ -237,6 +237,11 @@ async def batch_predict(file: UploadFile = File(...)):
 def health():
     return {"status": "ok", "model": "XGBoost + Règles métier v2"}
 
+@app.get("/results")
+def get_results():
+    df = pd.read_csv("resultats_scoring.csv")
+    return {"predictions": df.to_dict(orient="records"), "total": len(df)}
+
 @app.get("/")
 def root():
     return {"message": "API Scoring STBG v2 — POST /predict"}
