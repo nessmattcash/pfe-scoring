@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react"
 import axios from "axios"
 
-// ── Reveal hook ───────────────────────────────────────────────────────────────
+// ── Reveal hook (unchanged) ──────────────────────────────────────────────
 function useReveal() {
   useEffect(() => {
     const t = setTimeout(() => {
@@ -155,7 +155,7 @@ function Ring({ faible, modere, eleve, total }) {
   )
 }
 
-// ── Score sparkline (mini trend line) ─────────────────────────────────────────
+// ── Score sparkline ─────────────────────────────────────────────────────────
 function Sparkline({ scores, color }) {
   const W = 120, H = 36
   const min = Math.min(...scores), max = Math.max(...scores)
@@ -180,7 +180,7 @@ function Sparkline({ scores, color }) {
   )
 }
 
-// ── KPI card ──────────────────────────────────────────────────────────────────
+// ── KPI card ────────────────────────────────────────────────────────────────
 function KPICard({ label, value, sub, color, icon, trend, sparkData }) {
   return (
     <div style={{
@@ -218,7 +218,7 @@ function KPICard({ label, value, sub, color, icon, trend, sparkData }) {
   )
 }
 
-// ── Top risqués table ─────────────────────────────────────────────────────────
+// ── Top risqués table ────────────────────────────────────────────────────────
 function TopRisques({ data }) {
   return (
     <div style={{ borderRadius: 14, border: "1px solid rgba(244,197,66,0.08)", overflow: "hidden", background: "rgba(5,3,10,0.6)" }}>
@@ -260,7 +260,7 @@ function TopRisques({ data }) {
   )
 }
 
-// ── Section wrapper ───────────────────────────────────────────────────────────
+// ── Section wrapper ──────────────────────────────────────────────────────────
 function Section({ children, label, num, delay = 0 }) {
   return (
     <div className="db" style={{ transitionDelay: `${delay}s`, marginBottom: 32 }}>
@@ -275,7 +275,7 @@ function Section({ children, label, num, delay = 0 }) {
   )
 }
 
-// ── Card wrapper ──────────────────────────────────────────────────────────────
+// ── Card wrapper ────────────────────────────────────────────────────────────
 function Card({ children, style = {} }) {
   return (
     <div style={{
@@ -290,7 +290,7 @@ function Card({ children, style = {} }) {
   )
 }
 
-// ── Card title ────────────────────────────────────────────────────────────────
+// ── Card title ──────────────────────────────────────────────────────────────
 function CardTitle({ children, sub }) {
   return (
     <div style={{ marginBottom: 20 }}>
@@ -300,59 +300,137 @@ function CardTitle({ children, sub }) {
   )
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// MAIN DASHBOARD
-// ═══════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN DASHBOARD (with file upload)
+// ═══════════════════════════════════════════════════════════════════════════
 export default function DashboardPage() {
   useReveal()
 
-  const [data,        setData]        = useState(null)
-  const [loading,     setLoading]     = useState(true)
-  const [error,       setError]       = useState(null)
-  const [activeTab,   setActiveTab]   = useState("overview")
-  const [filterSec,   setFilterSec]   = useState("ALL")
-  const [animKPI,     setAnimKPI]     = useState(false)
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const [activeTab, setActiveTab] = useState("overview")
+  const [fileName, setFileName] = useState(null)
 
-  useEffect(() => {
-    axios.get("http://127.0.0.1:8000/results")
-      .then(r => { setData(r.data); setLoading(false); setTimeout(() => setAnimKPI(true), 100) })
-      .catch(() => setError("Aucun résultat disponible — effectuez d'abord un scoring masse."))
-  }, [])
+  const handleFileUpload = async (file) => {
+    if (!file) return
+    setLoading(true)
+    setError(null)
+    const formData = new FormData()
+    formData.append("file", file)
+    try {
+      const response = await axios.post("http://127.0.0.1:8000/batch_predict", formData, {
+        headers: { "Content-Type": "multipart/form-data" }
+      })
+      setData(response.data)
+      setFileName(file.name)
+    } catch (err) {
+      setError(err.response?.data?.detail || "Erreur lors du scoring du fichier")
+    } finally {
+      setLoading(false)
+    }
+  }
+   
+ const stats = useMemo(() => {
+  console.log("🔍 Computing stats, data =", data)
+  if (!data) return null
+  const p = data.predictions
+  console.log("📈 Predictions length:", p?.length)
+  if (!p || p.length === 0) return null
+  
+  const scores = p.map(r => r.score)
+  const avg = scores.reduce((a, b) => a + b, 0) / p.length
+  const faible = p.filter(r => r.niveau === "FAIBLE").length
+  const modere = p.filter(r => r.niveau === "MODÉRÉ").length
+  const eleve = p.filter(r => r.niveau === "ÉLEVÉ").length
+  const encours = p.reduce((s, r) => s + (Number(r.montant_encours_tnd) || 0), 0)
+  const delai = p.reduce((s, r) => s + (Number(r.delai_moyen_jours) || 0), 0) / p.length
 
-  const stats = useMemo(() => {
-    if (!data) return null
-    const p = data.predictions
-    const scores = p.map(r => r.score)
-    const avg = scores.reduce((a, b) => a + b, 0) / p.length
-    const faible  = p.filter(r => r.niveau === "FAIBLE").length
-    const modere  = p.filter(r => r.niveau === "MODÉRÉ").length
-    const eleve   = p.filter(r => r.niveau === "ÉLEVÉ").length
-    const encours = p.reduce((s, r) => s + (Number(r.montant_encours_tnd) || 0), 0)
-    const delai   = p.reduce((s, r) => s + (Number(r.delai_moyen_jours) || 0), 0) / p.length
+  const hist = [
+    { label: "0–20",   count: scores.filter(s => s <= 20).length },
+    { label: "20–40",  count: scores.filter(s => s > 20 && s <= 40).length },
+    { label: "40–60",  count: scores.filter(s => s > 40 && s <= 60).length },
+    { label: "60–80",  count: scores.filter(s => s > 60 && s <= 80).length },
+    { label: "80–100", count: scores.filter(s => s > 80).length },
+  ]
 
-    const hist = [
-      { label: "0–20",   count: scores.filter(s => s <= 20).length },
-      { label: "20–40",  count: scores.filter(s => s > 20 && s <= 40).length },
-      { label: "40–60",  count: scores.filter(s => s > 40 && s <= 60).length },
-      { label: "60–80",  count: scores.filter(s => s > 60 && s <= 80).length },
-      { label: "80–100", count: scores.filter(s => s > 80).length },
-    ]
+  const secteurs = [...new Set(p.map(r => r.secteur))].map(sec => {
+    const g = p.filter(r => r.secteur === sec)
+    return { 
+      name: sec, 
+      avg: g.reduce((a, r) => a + r.score, 0) / g.length, 
+      count: g.length, 
+      encours: g.reduce((a, r) => a + (Number(r.montant_encours_tnd) || 0), 0) 
+    }
+  }).sort((a, b) => b.avg - a.avg)
 
-    const secteurs = [...new Set(p.map(r => r.secteur))].map(sec => {
-      const g = p.filter(r => r.secteur === sec)
-      return { name: sec, avg: g.reduce((a, r) => a + r.score, 0) / g.length, count: g.length, encours: g.reduce((a, r) => a + (Number(r.montant_encours_tnd) || 0), 0) }
-    }).sort((a, b) => b.avg - a.avg)
+  const regions = [...new Set(p.map(r => r.region))].map(reg => {
+    const g = p.filter(r => r.region === reg)
+    return { 
+      name: reg, 
+      avg: g.reduce((a, r) => a + r.score, 0) / g.length, 
+      count: g.length 
+    }
+  }).sort((a, b) => b.avg - a.avg)
 
-    const regions = [...new Set(p.map(r => r.region))].map(reg => {
-      const g = p.filter(r => r.region === reg)
-      return { name: reg, avg: g.reduce((a, r) => a + r.score, 0) / g.length, count: g.length }
-    }).sort((a, b) => b.avg - a.avg)
+  const top10 = [...p].sort((a, b) => b.score - a.score).slice(0, 10)
+  const sparkScores = [...scores].sort(() => Math.random() - 0.5).slice(0, 12)
 
-    const top10 = [...p].sort((a, b) => b.score - a.score).slice(0, 10)
-    const sparkScores = [...scores].sort(() => Math.random() - .5).slice(0, 12)
+  console.log("✅ Stats computed:", { total: p.length, avg, faible, modere, eleve })
+  return { p, scores, avg, faible, modere, eleve, encours, delai, hist, secteurs, regions, top10, sparkScores, total: p.length }
+}, [data]) 
+  // If no data yet, show upload area
+  if (!data && !loading) {
+    return (
+      <div style={{ padding: "120px 40px 100px", maxWidth: 600, margin: "0 auto", textAlign: "center" }}>
+        <div style={{ marginBottom: 32 }}>
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" strokeWidth="1">
+            <path d="M12 16v-6m0 0-3 3m3-3 3 3m-6 5h6" strokeLinecap="round"/>
+            <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2M4 8V6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2"/>
+          </svg>
+        </div>
+        <h2 style={{ fontFamily: "var(--serif)", fontSize: 28, color: "var(--gold)", marginBottom: 12 }}>Analyse de portefeuille</h2>
+        <p style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--ink-mute)", marginBottom: 24 }}>
+          Chargez un fichier Excel (.xlsx) ou CSV contenant les données clients pour obtenir un scoring complet et un tableau de bord détaillé.
+        </p>
+        <label style={{
+          display: "inline-flex", alignItems: "center", gap: 12,
+          padding: "12px 24px", background: "linear-gradient(180deg,var(--gold),var(--gold-soft))",
+          color: "var(--bg)", borderRadius: 40, fontFamily: "var(--mono)", fontSize: 12,
+          fontWeight: 700, letterSpacing: 1, cursor: "pointer"
+        }}>
+          📂 Sélectionner un fichier
+          <input type="file" accept=".xlsx,.csv" onChange={e => handleFileUpload(e.target.files[0])} style={{ display: "none" }}/>
+        </label>
+        {error && <div style={{ marginTop: 24, padding: 12, background: "rgba(211,74,74,0.1)", border: "1px solid rgba(211,74,74,0.3)", borderRadius: 12, color: "#d34a4a", fontSize: 13 }}>{error}</div>}
+      </div>
+    )
+  }
 
-    return { p, scores, avg, faible, modere, eleve, encours, delai, hist, secteurs, regions, top10, sparkScores, total: p.length }
-  }, [data])
+  if (loading) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "60vh", gap: 20 }}>
+        <style>{`.db-spin{animation:db-rotate 1s linear infinite}@keyframes db-rotate{to{transform:rotate(360deg)}}`}</style>
+        <div className="db-spin" style={{ width: 48, height: 48, borderRadius: "50%", border: "2px solid rgba(244,197,66,0.1)", borderTop: "2px solid var(--gold)" }}/>
+        <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--ink-mute)", letterSpacing: "2px" }}>SCORING EN COURS...</div>
+      </div>
+    )
+  }
+
+  
+
+  if (error || !stats) {
+    return (
+      <div style={{ maxWidth: 600, margin: "100px auto", textAlign: "center", padding: "0 40px" }}>
+        <svg viewBox="0 0 48 48" width="48" style={{ margin: "0 auto 16px", display: "block", opacity: .3 }} fill="none" stroke="var(--gold)" strokeWidth="1.2">
+          <path d="M24 8v16M24 36h.01"/><circle cx="24" cy="24" r="20"/>
+        </svg>
+        <div style={{ fontFamily: "var(--serif)", fontSize: 24, color: "var(--ink)", marginBottom: 10 }}>Aucune donnée</div>
+        <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--ink-mute)", lineHeight: 1.8, letterSpacing: ".5px" }}>{error || "Erreur inconnue"}</div>
+        <button onClick={() => window.location.reload()} style={{ marginTop: 24, padding: "8px 20px", background: "rgba(244,197,66,0.1)", border: "1px solid var(--gold)", borderRadius: 40, color: "var(--gold)", cursor: "pointer" }}>Recharger</button>
+      </div>
+    )
+  }
 
   const TABS = [
     { key: "overview",  label: "Vue d'ensemble" },
@@ -360,24 +438,6 @@ export default function DashboardPage() {
     { key: "secteurs",  label: "Secteurs"        },
     { key: "regions",   label: "Régions"         },
   ]
-
-  if (loading) return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "60vh", gap: 20 }}>
-      <style>{`.db-spin{animation:db-rotate 1s linear infinite}@keyframes db-rotate{to{transform:rotate(360deg)}}`}</style>
-      <div className="db-spin" style={{ width: 48, height: 48, borderRadius: "50%", border: "2px solid rgba(244,197,66,0.1)", borderTop: "2px solid var(--gold)" }}/>
-      <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--ink-mute)", letterSpacing: "2px" }}>CHARGEMENT DES DONNÉES</div>
-    </div>
-  )
-
-  if (error) return (
-    <div style={{ maxWidth: 600, margin: "100px auto", textAlign: "center", padding: "0 40px" }}>
-      <svg viewBox="0 0 48 48" width="48" style={{ margin: "0 auto 16px", display: "block", opacity: .3 }} fill="none" stroke="var(--gold)" strokeWidth="1.2">
-        <path d="M24 8v16M24 36h.01"/><circle cx="24" cy="24" r="20"/>
-      </svg>
-      <div style={{ fontFamily: "var(--serif)", fontSize: 24, color: "var(--ink)", marginBottom: 10 }}>Aucune donnée</div>
-      <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--ink-mute)", lineHeight: 1.8, letterSpacing: ".5px" }}>{error}</div>
-    </div>
-  )
 
   return (
     <>
@@ -392,8 +452,7 @@ export default function DashboardPage() {
       `}</style>
 
       <section style={{ padding: "100px 40px 100px", maxWidth: 1280, margin: "0 auto" }}>
-
-        {/* ── Page header */}
+        {/* Header with file info */}
         <div className="db" style={{ marginBottom: 48 }}>
           <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: 20 }}>
             <div>
@@ -408,12 +467,12 @@ export default function DashboardPage() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", background: "rgba(92,184,116,0.06)", border: "1px solid rgba(92,184,116,0.2)", borderRadius: 10 }}>
               <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#5cb874", boxShadow: "0 0 8px #5cb874", animation: "pulse 2s infinite" }}/>
-              <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "#5cb874", letterSpacing: "1.5px" }}>{stats.total} CLIENTS · DONNÉES EN DIRECT</span>
+              <span style={{ fontFamily: "var(--mono)", fontSize: 10, color: "#5cb874", letterSpacing: "1.5px" }}>{stats.total} CLIENTS · FICHIER: {fileName}</span>
             </div>
           </div>
         </div>
 
-        {/* ── Tabs */}
+        {/* Tabs */}
         <div className="db db-d1" style={{ display: "flex", gap: 6, marginBottom: 40, borderBottom: "1px solid rgba(244,197,66,0.08)", paddingBottom: 0 }}>
           {TABS.map(tab => {
             const on = activeTab === tab.key
@@ -436,10 +495,9 @@ export default function DashboardPage() {
           })}
         </div>
 
-        {/* ══ TAB: Vue d'ensemble ══ */}
+        {/* Tab content – exactly the same as your original dashboard (unchanged) */}
         {activeTab === "overview" && (
           <>
-            {/* KPIs */}
             <Section label="Indicateurs clés" num="01" delay={0}>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16 }}>
                 <div className="db db-d1">
@@ -468,7 +526,6 @@ export default function DashboardPage() {
               </div>
             </Section>
 
-            {/* Charts row */}
             <Section label="Distribution & répartition" num="02" delay={.1}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
                 <div className="db db-d1">
@@ -486,7 +543,6 @@ export default function DashboardPage() {
               </div>
             </Section>
 
-            {/* Top risqués */}
             <Section label="Surveillance prioritaire" num="03" delay={.2}>
               <div className="db">
                 <Card style={{ padding: 0, overflow: "hidden" }}>
@@ -504,7 +560,6 @@ export default function DashboardPage() {
           </>
         )}
 
-        {/* ══ TAB: Risques ══ */}
         {activeTab === "risques" && (
           <>
             <Section label="Analyse de risque détaillée" num="01" delay={0}>
@@ -545,7 +600,6 @@ export default function DashboardPage() {
           </>
         )}
 
-        {/* ══ TAB: Secteurs ══ */}
         {activeTab === "secteurs" && (
           <Section label="Performance par secteur d'activité" num="01" delay={0}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
@@ -573,7 +627,6 @@ export default function DashboardPage() {
           </Section>
         )}
 
-        {/* ══ TAB: Régions ══ */}
         {activeTab === "regions" && (
           <Section label="Performance par région" num="01" delay={0}>
             <div className="db db-d1">
@@ -590,7 +643,6 @@ export default function DashboardPage() {
             </div>
           </Section>
         )}
-
       </section>
     </>
   )

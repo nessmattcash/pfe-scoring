@@ -129,22 +129,26 @@ def predict(client: Client):
 @app.post("/batch_predict")
 async def batch_predict(file: UploadFile = File(...)):
     """
-    Scoring en masse à partir d'un fichier CSV.
-    Colonnes obligatoires : identiques à Client (voir modèle Pydantic).
-    Retourne le CSV enrichi avec score, niveau, decision, proba_ml, score_metier.
+    Scoring en masse – accepte CSV (; ou ,) ou Excel.
+    Nettoie les valeurs manquantes pour éviter les NaN dans JSON.
     """
-    # 1. Lire le CSV
-    try:
-        contents = await file.read()
-        # Détection automatique de l'encodage (support UTF-8 avec BOM)
+    contents = await file.read()
+    filename = file.filename.lower()
+    
+    # Lecture du fichier
+    if filename.endswith('.xlsx'):
+        df = pd.read_excel(io.BytesIO(contents), engine='openpyxl')
+    else:
+        # CSV avec gestion BOM et détection du séparateur
         try:
-            df = pd.read_csv(io.StringIO(contents.decode("utf-8")))
-        except UnicodeDecodeError:
-            df = pd.read_csv(io.StringIO(contents.decode("latin-1")))
-    except Exception as e:
-        raise HTTPException(400, f"Erreur de lecture CSV : {str(e)}")
-
-    # 2. Vérifier les colonnes minimales requises (celles du modèle Pydantic)
+            text = contents.decode('utf-8-sig')
+        except:
+            text = contents.decode('latin-1')
+        first_line = text.split('\n')[0]
+        sep = ';' if ';' in first_line else ','
+        df = pd.read_csv(io.StringIO(text), sep=sep)
+    
+    # Colonnes obligatoires
     required_cols = [
         "anciennete_annees", "nb_contrats_actifs", "montant_encours_tnd",
         "ca_annuel_tnd", "nb_traites_actives", "montant_moyen_traite",
@@ -155,81 +159,88 @@ async def batch_predict(file: UploadFile = File(...)):
     missing = [col for col in required_cols if col not in df.columns]
     if missing:
         raise HTTPException(400, f"Colonnes manquantes : {missing}")
-
-    # 3. Remplir les valeurs manquantes éventuelles (par sécurité)
-    df = df.fillna({
-        "nb_contrats_actifs": 0,
-        "nb_traites_actives": 0,
-        "montant_moyen_traite": 0,
-        "nb_retards_12m": 0,
-        "nb_impayes": 0,
-        "nb_cheques_retournes": 0,
-        "nb_litiges": 0,
-        "concentration_pct": 0.0,
-    })
-
-    # 4. Appliquer le scoring ligne par ligne (réutilise la fonction existante)
+    
+    # Convertir les colonnes numériques en nombre, coercer les erreurs en NaN puis remplir par 0
+    numeric_cols = [
+        "anciennete_annees", "nb_contrats_actifs", "montant_encours_tnd",
+        "ca_annuel_tnd", "nb_traites_actives", "montant_moyen_traite",
+        "nb_retards_12m", "nb_impayes", "delai_moyen_jours",
+        "concentration_pct", "nb_cheques_retournes", "nb_litiges"
+    ]
+    for col in numeric_cols:
+        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(float)
+    
+    # Remplir les colonnes textuelles vides par une chaîne vide (pour éviter NaN)
+    text_cols = ["secteur", "region", "type_client", "banque_domiciliation", "prenom", "nom"]
+    for col in text_cols:
+        if col in df.columns:
+            df[col] = df[col].fillna("").astype(str)
+        else:
+            df[col] = ""  # ajouter la colonne si absente
+    
     results = []
     for idx, row in df.iterrows():
         d = row.to_dict()
-        # --- Encodage des variables catégorielles avec fallback ---
+        
+        # Encodage catégoriel
         for col in ['secteur', 'region', 'type_client', 'banque_domiciliation']:
             val = d[col]
             known = list(le_dict[col].classes_)
             if val not in known:
                 val = FALLBACKS.get(col, known[0] if known else 'Tunis')
             d[col + '_enc'] = int(le_dict[col].transform([val])[0])
-            d[col] = val   # on garde la valeur originale pour l'affichage
-
-        # --- Features dérivées (identique à /predict) ---
+            d[col] = val  # garder la valeur corrigée
+        
+        # Features dérivées
         ca = max(d['ca_annuel_tnd'], 1)
-        d['ratio_encours_ca']   = d['montant_encours_tnd'] / ca
+        d['ratio_encours_ca'] = d['montant_encours_tnd'] / ca
         d['encours_par_traite'] = d['montant_encours_tnd'] / max(d['nb_traites_actives'], 1)
-        d['score_anciennete']   = 1 if d['anciennete_annees'] > 10 else (0 if d['anciennete_annees'] > 5 else -1)
-        d['charge_paiement']    = d['nb_retards_12m'] + d['nb_impayes'] * 2 + d['nb_cheques_retournes'] * 3
-        d['stress_financier']   = d['ratio_encours_ca'] * d['delai_moyen_jours'] / 30
-
-        # --- Prédiction ML ---
+        d['score_anciennete'] = 1 if d['anciennete_annees'] > 10 else (0 if d['anciennete_annees'] > 5 else -1)
+        d['charge_paiement'] = d['nb_retards_12m'] + d['nb_impayes'] * 2 + d['nb_cheques_retournes'] * 3
+        d['stress_financier'] = d['ratio_encours_ca'] * d['delai_moyen_jours'] / 30
+        
+        # Prédiction ML
         X = pd.DataFrame([d])[features]
         proba_ml = float(model.predict_proba(X)[0][1])
-
-        # --- Score métier ---
+        
+        # Score métier
         score_metier = compute_score_metier(d)
-
-        # --- Score hybride ---
+        
+        # Score hybride
         score_final = int(np.clip(proba_ml * 100 * 0.60 + score_metier * 0.40, 1, 99))
-
-        # --- Niveau et décision ---
+        
+        # Niveau et décision
         if score_final > 60:
             niveau, decision = "ÉLEVÉ", "Refuser le crédit"
         elif score_final > 30:
             niveau, decision = "MODÉRÉ", "Accorder avec garanties"
         else:
             niveau, decision = "FAIBLE", "Accorder le crédit"
-
-        # Stockage
-        results.append({
-            **d,   # toutes les colonnes originales + dérivées (optionnel)
-            "score": score_final,
-            "niveau": niveau,
-            "decision": decision,
-            "proba_ml": round(proba_ml, 4),
-            "score_metier": round(score_metier, 1),
-        })
-
-    # 5. Construire le DataFrame de sortie (uniquement colonnes utiles)
+        
+        # Construction du résultat avec valeurs propres (pas de NaN)
+        result = {
+            "prenom": str(d.get("prenom", "")),
+            "nom": str(d.get("nom", "")),
+            "secteur": str(d["secteur"]),
+            "region": str(d["region"]),
+            "montant_encours_tnd": float(d["montant_encours_tnd"]),
+            "delai_moyen_jours": float(d["delai_moyen_jours"]),
+            "score": int(score_final),
+            "niveau": str(niveau),
+            "decision": str(decision),
+            "proba_ml": float(round(proba_ml, 4)),
+            "score_metier": float(round(score_metier, 1)),
+        }
+        results.append(result)
+    
+    # Sauvegarde pour le dashboard (remplace les NaN par None)
     out_df = pd.DataFrame(results)
-    # On garde les colonnes d'origine + les 5 nouvelles
-    output_cols = required_cols + ["score", "niveau", "decision", "proba_ml", "score_metier"]
-    out_df = out_df[output_cols]
-
-    # 6. Sauvegarde persistante (optionnelle mais utile pour le dashboard)
-    out_df.to_csv("resultats_scoring.csv", index=False, encoding="utf-8")
-
-    # 7. Retour JSON (le frontend l'attend)
+    out_df = out_df.replace({np.nan: None, np.inf: None, -np.inf: None})
+    out_df.to_csv("resultats_scoring.csv", index=False, encoding="utf-8-sig", sep=';')
+    
     return {
-        "predictions": out_df.to_dict(orient="records"),
-        "total": len(out_df)
+        "predictions": results,
+        "total": len(results)
     }
 
 
@@ -239,7 +250,8 @@ def health():
 
 @app.get("/results")
 def get_results():
-    df = pd.read_csv("resultats_scoring.csv")
+    df = pd.read_csv("resultats_scoring.csv", sep=';', encoding='utf-8-sig')
+    df = df.replace({np.nan: None, np.inf: None, -np.inf: None})
     return {"predictions": df.to_dict(orient="records"), "total": len(df)}
 
 @app.get("/")
