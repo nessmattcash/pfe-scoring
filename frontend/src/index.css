@@ -692,3 +692,14 @@ main { position: relative; z-index: 2; }
   background: var(--gold);
   color: var(--bg);
 }
+/* ── Loader timing override — smooth 3s experience ── */
+.loader-half-left,
+.loader-half-right {
+  transition: transform 1.1s var(--ease-out-expo) !important;
+}
+.loader-shield-wrap {
+  transition: opacity .6s ease 0.5s, transform 1s var(--ease-out-expo) 0.4s !important;
+}
+.page-loader {
+  transition: opacity .3s ease !important;
+}
