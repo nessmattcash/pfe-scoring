@@ -3,9 +3,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import joblib, numpy as np, pandas as pd
 import csv, io
+from auth import router as auth_router, init_db
 
 
 app = FastAPI(title="Scoring Client STBG", version="2.0")
+app.include_router(auth_router)
+init_db()
 
 app.add_middleware(
     CORSMiddleware,

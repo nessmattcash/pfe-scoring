@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react"
+import { useState, useEffect, useRef, useMemo, useCallback } from "react"
 
 // ── Translation helper ────────────────────────────────────────────────────────
 const T = lang => (fr, en) => lang === "en" ? en : fr
@@ -393,6 +393,64 @@ function TestimonialsSection({ lang }) {
   )
 }
 
+// ── 06 CREATOR ────────────────────────────────────────────────────
+function CreatorSection({ lang }) {
+  const t = T(lang)
+  const [imgOk, setImgOk] = useState(true)
+  return (
+    <section id="sec-team" className="home-section-v2">
+      <div className="home-section-wrap">
+        <div className="home-content-center hv2-reveal" style={{ textAlign:"center", marginBottom:40 }}>
+          <Eyebrow num="06" label={t("Créateur","Creator")} center/>
+          <h2 className="hv2-title">{t("Conçu et développé par ","Designed and built by ")}<em>Khlifi Ayoub.</em></h2>
+          <p className="hv2-lead-sm" style={{ margin:"0 auto" }}>
+            {t("Projet de fin d'études — Février à Juin 2026. Ingénieur informatique, spécialisation Data Science & IA.","Final year project — February to June 2026. Computer engineering, Data Science & AI specialization.")}
+          </p>
+        </div>
+        <div className="hv2-reveal d2" style={{ maxWidth:520, margin:"0 auto" }}>
+          <div style={{
+            background:"linear-gradient(160deg,rgba(38,24,58,0.85),rgba(22,12,38,0.92))",
+            border:"1px solid rgba(244,197,66,0.2)", borderRadius:24,
+            padding:"44px 48px", textAlign:"center", position:"relative", overflow:"hidden",
+            boxShadow:"0 24px 80px rgba(0,0,0,0.4)"
+          }}>
+            <div style={{ position:"absolute", inset:0, background:"radial-gradient(ellipse 500px 300px at 50% 0%,rgba(244,197,66,0.08),transparent 60%)", pointerEvents:"none" }}/>
+            {/* Photo */}
+            <div style={{ width:120, height:120, borderRadius:"50%", margin:"0 auto 24px", border:"2px solid rgba(244,197,66,0.4)", overflow:"hidden", boxShadow:"0 0 40px rgba(244,197,66,0.25)", position:"relative" }}>
+              {imgOk
+                ? <img src="/ayoub.jpg" alt="Khlifi Ayoub"
+                    onError={() => setImgOk(false)}
+                    style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }}/>
+                : <div style={{ width:"100%", height:"100%", background:"linear-gradient(135deg,#2d1f4a,#7a2d3a)", display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"var(--serif)", fontSize:36, color:"var(--gold)" }}>K</div>
+              }
+            </div>
+            {/* Name & role */}
+            <div style={{ fontFamily:"var(--serif)", fontSize:28, color:"var(--ink)", marginBottom:8, position:"relative" }}>Khlifi Ayoub</div>
+            <div style={{ fontFamily:"var(--mono)", fontSize:10, color:"var(--gold)", letterSpacing:"3px", textTransform:"uppercase", marginBottom:6, position:"relative" }}>
+              {t("Ingénieur · Data Science · IA","Engineer · Data Science · AI")}
+            </div>
+            <div style={{ fontFamily:"var(--mono)", fontSize:9, color:"rgba(244,197,66,0.4)", letterSpacing:"2px", marginBottom:24, position:"relative" }}>
+              PFE 2026 · STBG MÉGRINE
+            </div>
+            <div style={{ height:1, background:"rgba(244,197,66,0.1)", margin:"0 0 24px", position:"relative" }}/>
+            <p style={{ fontSize:14, color:"var(--ink-dim)", lineHeight:1.7, margin:"0 0 24px", position:"relative" }}>
+              {t(
+                "Modèle XGBoost hybride entraîné sur 50 000 profils, pipeline FastAPI, interface React avec scoring en temps réel — conçu de A à Z pour le département risque STBG.",
+                "Hybrid XGBoost model trained on 50,000 profiles, FastAPI pipeline, React interface with real-time scoring — built end-to-end for STBG's risk department."
+              )}
+            </p>
+            <div style={{ display:"flex", justifyContent:"center", gap:10, flexWrap:"wrap", position:"relative" }}>
+              {["XGBoost","FastAPI","React","Python","scikit-learn"].map(tag => (
+                <span key={tag} style={{ padding:"4px 14px", borderRadius:99, background:"rgba(244,197,66,0.07)", border:"1px solid rgba(244,197,66,0.18)", fontFamily:"var(--mono)", fontSize:10, color:"rgba(244,197,66,0.55)", letterSpacing:"1px" }}>{tag}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 // ── 07 ROADMAP ────────────────────────────────────────────────────
 function RoadmapSection({ lang }) {
   const t = T(lang)
@@ -524,54 +582,99 @@ export default function HomePage({ setPage, lang = "fr" }) {
     dur: 9+Math.random()*10, delay: -Math.random()*12,
   })), [])
 
-  const [scrollP, setScrollP]   = useState(0)
-  const [active,  setActive]    = useState("sec-hero")
-  const mxRef   = useRef(0.5)
-  const myRef   = useRef(0.5)
-  const [mouseTick, setMouseTick] = useState(0)
-  const mouseRaf = useRef(null)
-  const spotRef = useRef(null)
-  const hueRef  = useRef(null)
-  const rafRef  = useRef(null)
+  const [active, setActive] = useState("sec-hero")
+  const spotRef    = useRef(null)
+  const hueRef     = useRef(null)
+  const bottleRef  = useRef(null)
+  const raysRef    = useRef(null)
+  const loopRef    = useRef(null)
 
-  // Scroll progress
+  // Smooth bottle state — all in refs, no setState → zero lag
+  const target = useRef({ bx:75, by:30, rot:-8, scale:0.95, fill:70, color:"#f4c542" })
+  const current = useRef({ bx:75, by:30, rot:-8, scale:0.95 })
+  const rawScroll = useRef(0)
+  const rawMx = useRef(0.5)
+  const rawMy = useRef(0.5)
+
   useEffect(() => {
-    let tick = false
-    const update = () => {
+    // Scroll → raw target (no setState)
+    const onScroll = () => {
       const total = document.documentElement.scrollHeight - window.innerHeight
-      const p = total > 0 ? Math.min(1, Math.max(0, window.scrollY / total)) : 0
-      setScrollP(p)
-      if (hueRef.current) hueRef.current.style.setProperty("--p", p)
-      tick = false
+      rawScroll.current = total > 0 ? Math.min(1, Math.max(0, window.scrollY / total)) : 0
+      if (hueRef.current) hueRef.current.style.setProperty("--p", rawScroll.current)
     }
-    const onScroll = () => { if (!tick) { rafRef.current = requestAnimationFrame(update); tick = true } }
     onScroll()
     window.addEventListener("scroll", onScroll, { passive:true })
-    return () => { window.removeEventListener("scroll", onScroll); if(rafRef.current) cancelAnimationFrame(rafRef.current) }
-  }, [])
 
-  // Mouse spotlight — DOM update only, no re-render
-  useEffect(() => {
-    let last = 0
+    // Mouse → raw (no setState)
     const onMove = e => {
+      rawMx.current = e.clientX / window.innerWidth
+      rawMy.current = e.clientY / window.innerHeight
       if (spotRef.current) {
         spotRef.current.style.setProperty("--mx", `${e.clientX}px`)
         spotRef.current.style.setProperty("--my", `${e.clientY}px`)
       }
-      mxRef.current = e.clientX / window.innerWidth
-      myRef.current = e.clientY / window.innerHeight
-      const now = performance.now()
-      if (now - last > 40) { // ~25fps for bottle only
-        last = now
-        cancelAnimationFrame(mouseRaf.current)
-        mouseRaf.current = requestAnimationFrame(() => setMouseTick(t => t+1))
-      }
     }
     window.addEventListener("mousemove", onMove, { passive:true })
-    return () => { window.removeEventListener("mousemove", onMove); cancelAnimationFrame(mouseRaf.current) }
+
+    // rAF loop — lerp current → target, write directly to DOM
+    const LERP_SPEED = 0.12
+    const loop = () => {
+      const p = rawScroll.current
+      const mx = rawMx.current
+      const my = rawMy.current
+
+      // Compute raw target from scroll
+      let tbx, tby, trot, tscale
+      if (p < 0.5) {
+        const e = easeIO(p / 0.5)
+        tbx=lerp(72,50,e); tby=lerp(40,55,e); trot=lerp(-8,0,e); tscale=lerp(0.95,1.05,e)
+      } else {
+        const e = easeIO((p-0.5)/0.5)
+        tbx=lerp(50,20,e); tby=lerp(55,60,e); trot=lerp(0,12,e); tscale=lerp(1.05,0.90,e)
+      }
+      // Clamp precisely: bottle height is 65vh, header=80px≈10vh, footer=80px≈10vh
+      // center must be between (10 + 32.5)=42.5vh and (100-10-32.5)=57.5vh
+      // But we want bottle to travel more — use px-based clamp
+      const vh100 = window.innerHeight
+      const bottleHalfPx = (vh100 * 0.65 * tscale) / 2
+      const minByPx = 85 + bottleHalfPx          // 85px = header height
+      const maxByPx = vh100 - 85 - bottleHalfPx  // 85px = footer approx
+      const tbyPx = (tby / 100) * vh100
+      const clampedByPx = Math.max(minByPx, Math.min(maxByPx, tbyPx))
+      tby = (clampedByPx / vh100) * 100
+      trot += (mx-0.5)*5
+
+      // Lerp current toward target
+      const c = current.current
+      c.bx    += (tbx    - c.bx)    * LERP_SPEED
+      c.by    += (tby    - c.by)    * LERP_SPEED
+      c.rot   += (trot   - c.rot)   * LERP_SPEED
+      c.scale += (tscale - c.scale) * LERP_SPEED
+
+      // Write directly to DOM — zero React re-render
+      if (bottleRef.current) {
+        bottleRef.current.style.left    = `${c.bx}%`
+        bottleRef.current.style.top     = `${c.by}vh`
+        bottleRef.current.style.transform = `translate(-50%,-50%) rotate(${c.rot}deg) scale(${c.scale})`
+      }
+      if (raysRef.current) {
+        raysRef.current.style.left = `${c.bx}%`
+        raysRef.current.style.top  = `${c.by}vh`
+      }
+
+      loopRef.current = requestAnimationFrame(loop)
+    }
+    loopRef.current = requestAnimationFrame(loop)
+
+    return () => {
+      window.removeEventListener("scroll", onScroll)
+      window.removeEventListener("mousemove", onMove)
+      cancelAnimationFrame(loopRef.current)
+    }
   }, [])
 
-  // Active section dot nav
+  // Active section dot nav (separate, only updates active state)
   useEffect(() => {
     const obs = SECTIONS.map(({ id }) => {
       const el = document.getElementById(id)
@@ -583,25 +686,10 @@ export default function HomePage({ setPage, lang = "fr" }) {
     return () => obs.forEach(o => o.disconnect())
   }, [])
 
-  // Bottle position
-  const bottle = useMemo(() => {
-    let bx, by, rot, scale
-    if (scrollP < 0.5) {
-      const e = easeIO(scrollP/0.5)
-      bx=lerp(75,50,e); by=lerp(25,50,e); rot=lerp(-8,0,e); scale=lerp(0.95,1.05,e)
-    } else {
-      const e = easeIO((scrollP-0.5)/0.5)
-      bx=lerp(50,18,e); by=lerp(50,78,e); rot=lerp(0,14,e); scale=lerp(1.05,0.92,e)
-    }
-    // clamp bottle away from header (80px) and footer (~80px)
-    const byPx = (by / 100) * window.innerHeight
-    const clampedByPx = Math.max(130, Math.min(window.innerHeight - 130, byPx))
-    const clampedBy = (clampedByPx / window.innerHeight) * 100
-    return { bx, by:clampedBy, rot:rot+(mxRef.current-0.5)*6, tilt:(myRef.current-0.5)*-3, scale }
-  }, [scrollP, mouseTick])
-
-  const liquidColor = useMemo(() => colorAt(scrollP), [scrollP])
-  const fillPct = 70 + Math.sin(scrollP*Math.PI)*25
+  // These are now static for render — bottle position is DOM-driven
+  const scrollP   = 0
+  const liquidColor = "#f4c542"
+  const fillPct   = 82
 
   return (
     <div className="home-page-v2">
@@ -732,6 +820,13 @@ export default function HomePage({ setPage, lang = "fr" }) {
         .hv2-cta-final p{font-size:15px;color:var(--ink-dim);max-width:500px;margin:0 auto 32px;line-height:1.65;position:relative}
         .hv2-cta-final-buttons{display:flex;justify-content:center;gap:14px;position:relative;flex-wrap:wrap}
 
+        .hv2-team-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:28px}
+        .hv2-team-card{background:linear-gradient(160deg,rgba(28,18,44,0.65),rgba(18,10,31,0.75));border:1px solid var(--line);border-radius:16px;padding:28px;transition:border-color .25s}
+        .hv2-team-card:hover{border-color:var(--line-strong)}
+        .hv2-team-avatar{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,var(--royal),var(--burgundy));display:grid;place-items:center;font-family:var(--mono);font-size:13px;color:var(--ink);margin-bottom:14px;font-weight:600}
+        .hv2-team-name{font-size:15px;color:var(--ink);font-weight:500;margin-bottom:4px}
+        .hv2-team-role{font-family:var(--mono);font-size:9px;color:var(--gold);letter-spacing:2px;text-transform:uppercase;margin-bottom:12px}
+        .hv2-team-bio{font-size:13px;color:var(--ink-dim);line-height:1.55}
         @keyframes rayPulse{0%,100%{opacity:.25;transform:rotate(0deg) scaleY(1)}50%{opacity:.55;transform:rotate(2deg) scaleY(1.05)}}
         @media(max-width:900px){
           .home-content-half.right{margin-left:0}
@@ -754,8 +849,8 @@ export default function HomePage({ setPage, lang = "fr" }) {
         ))}
       </div>
 
-      {/* Volumetric rays */}
-      <div style={{ position:"fixed", left:`${bottle.bx}%`, top:`${bottle.by}%`, transform:"translate(-50%,-50%)", width:600, height:1000, pointerEvents:"none", zIndex:2, opacity:0.45 }}>
+      {/* Volumetric rays — DOM-driven via ref */}
+      <div ref={raysRef} style={{ position:"fixed", left:"75%", top:"30vh", transform:"translate(-50%,-50%)", width:600, height:1000, pointerEvents:"none", zIndex:2, opacity:0.45 }}>
         <svg viewBox="-300 -500 600 1000" style={{ width:"100%", height:"100%" }} preserveAspectRatio="xMidYMid meet">
           <defs>
             <linearGradient id="rayGrad" x1="0" y1="0" x2="0" y2="1">
@@ -769,13 +864,14 @@ export default function HomePage({ setPage, lang = "fr" }) {
         </svg>
       </div>
 
-      {/* Traveling bottle */}
-      <div className="home-bottle-traveler" style={{
-        "--bx":   `${bottle.bx}%`,
-        "--by":   `${bottle.by}%`,
-        "--brot": `${bottle.rot}deg`,
-        "--btilt":`${bottle.tilt}deg`,
-        "--bs":   bottle.scale,
+      {/* Traveling bottle — DOM-driven via ref, zero React re-render */}
+      <div ref={bottleRef} style={{
+        position:"fixed", left:"75%", top:"30vh",
+        width:"28vh", height:"60vh",
+        transform:"translate(-50%,-50%) rotate(-8deg) scale(0.95)",
+        pointerEvents:"none", zIndex:3,
+        filter:"drop-shadow(0 24px 48px rgba(0,0,0,0.5))",
+        willChange:"transform,left,top",
       }}>
         <Bottle fillPct={fillPct} color={liquidColor}/>
       </div>
@@ -800,6 +896,7 @@ export default function HomePage({ setPage, lang = "fr" }) {
       <ModelSection         lang={lang}/>
       <ImpactSection        lang={lang}/>
       <TestimonialsSection  lang={lang}/>
+      <CreatorSection       lang={lang}/>
       <RoadmapSection       lang={lang}/>
       <FaqSection           lang={lang}/>
       <CtaSection           lang={lang} onNav={setPage}/>
