@@ -1,82 +1,254 @@
-import requests, json
+"""
+STBG Risk — Test de sensibilité du modèle
+==========================================
+Partie 1 : 6 valeurs par attribut (les autres constants) → vérifier la monotonie
+Partie 2 : 20 profils aléatoires → vérifier la plage globale
+"""
+import requests, json, random, time
 
 API = "http://127.0.0.1:8000/predict"
 
-# 40 clients test — du meilleur (score attendu bas) au pire (score attendu haut)
-clients = [
-    # ── EXCELLENTS (score attendu < 20) ─────────────────────────────────────
-    {"nom":"EXC-01", "expected":"~10 FAIBLE",  "data":{"anciennete_annees":22,"nb_contrats_actifs":10,"montant_encours_tnd":30000,"ca_annuel_tnd":3000000,"nb_traites_actives":4,"montant_moyen_traite":7500,"nb_retards_12m":0,"nb_impayes":0,"delai_moyen_jours":7,"concentration_pct":2,"nb_cheques_retournes":0,"nb_litiges":0,"secteur":"Commerce","region":"Tunis","type_client":"Grossiste","banque_domiciliation":"BIAT"}},
-    {"nom":"EXC-02", "expected":"~12 FAIBLE",  "data":{"anciennete_annees":18,"nb_contrats_actifs":8,"montant_encours_tnd":45000,"ca_annuel_tnd":2800000,"nb_traites_actives":4,"montant_moyen_traite":11000,"nb_retards_12m":0,"nb_impayes":0,"delai_moyen_jours":8,"concentration_pct":3,"nb_cheques_retournes":0,"nb_litiges":0,"secteur":"Commerce","region":"Tunis","type_client":"Grossiste","banque_domiciliation":"BIAT"}},
-    {"nom":"EXC-03", "expected":"~14 FAIBLE",  "data":{"anciennete_annees":15,"nb_contrats_actifs":7,"montant_encours_tnd":60000,"ca_annuel_tnd":2200000,"nb_traites_actives":5,"montant_moyen_traite":12000,"nb_retards_12m":0,"nb_impayes":0,"delai_moyen_jours":10,"concentration_pct":4,"nb_cheques_retournes":0,"nb_litiges":0,"secteur":"Distribution","region":"Ariana","type_client":"Détaillant","banque_domiciliation":"ATTIJARI"}},
-    {"nom":"EXC-04", "expected":"~16 FAIBLE",  "data":{"anciennete_annees":20,"nb_contrats_actifs":9,"montant_encours_tnd":80000,"ca_annuel_tnd":3500000,"nb_traites_actives":6,"montant_moyen_traite":13000,"nb_retards_12m":0,"nb_impayes":0,"delai_moyen_jours":12,"concentration_pct":5,"nb_cheques_retournes":0,"nb_litiges":0,"secteur":"Agro-alimentaire","region":"Sfax","type_client":"Grossiste","banque_domiciliation":"BIAT"}},
-    {"nom":"EXC-05", "expected":"~18 FAIBLE",  "data":{"anciennete_annees":12,"nb_contrats_actifs":6,"montant_encours_tnd":50000,"ca_annuel_tnd":1800000,"nb_traites_actives":4,"montant_moyen_traite":12500,"nb_retards_12m":0,"nb_impayes":0,"delai_moyen_jours":15,"concentration_pct":6,"nb_cheques_retournes":0,"nb_litiges":0,"secteur":"Commerce","region":"Sousse","type_client":"Grande surface","banque_domiciliation":"ATB"}},
-
-    # ── BONS (score attendu 20-35) ───────────────────────────────────────────
-    {"nom":"BON-01", "expected":"~22 FAIBLE",  "data":{"anciennete_annees":10,"nb_contrats_actifs":5,"montant_encours_tnd":90000,"ca_annuel_tnd":1500000,"nb_traites_actives":5,"montant_moyen_traite":18000,"nb_retards_12m":1,"nb_impayes":0,"delai_moyen_jours":18,"concentration_pct":7,"nb_cheques_retournes":0,"nb_litiges":0,"secteur":"Distribution","region":"Nabeul","type_client":"Détaillant","banque_domiciliation":"BNA"}},
-    {"nom":"BON-02", "expected":"~25 FAIBLE",  "data":{"anciennete_annees":9,"nb_contrats_actifs":5,"montant_encours_tnd":95000,"ca_annuel_tnd":1200000,"nb_traites_actives":6,"montant_moyen_traite":15000,"nb_retards_12m":1,"nb_impayes":0,"delai_moyen_jours":18,"concentration_pct":8,"nb_cheques_retournes":0,"nb_litiges":0,"secteur":"Distribution","region":"Sfax","type_client":"Détaillant","banque_domiciliation":"ATB"}},
-    {"nom":"BON-03", "expected":"~28 FAIBLE",  "data":{"anciennete_annees":8,"nb_contrats_actifs":4,"montant_encours_tnd":120000,"ca_annuel_tnd":1400000,"nb_traites_actives":6,"montant_moyen_traite":20000,"nb_retards_12m":1,"nb_impayes":0,"delai_moyen_jours":22,"concentration_pct":9,"nb_cheques_retournes":0,"nb_litiges":0,"secteur":"Commerce","region":"Monastir","type_client":"Grossiste","banque_domiciliation":"ATTIJARI"}},
-    {"nom":"BON-04", "expected":"~30 FAIBLE",  "data":{"anciennete_annees":7,"nb_contrats_actifs":4,"montant_encours_tnd":150000,"ca_annuel_tnd":1300000,"nb_traites_actives":7,"montant_moyen_traite":21000,"nb_retards_12m":2,"nb_impayes":0,"delai_moyen_jours":24,"concentration_pct":10,"nb_cheques_retournes":0,"nb_litiges":0,"secteur":"Agro-alimentaire","region":"Bizerte","type_client":"Grossiste","banque_domiciliation":"BIAT"}},
-    {"nom":"BON-05", "expected":"~33 MODÉRÉ",  "data":{"anciennete_annees":6,"nb_contrats_actifs":4,"montant_encours_tnd":180000,"ca_annuel_tnd":1100000,"nb_traites_actives":7,"montant_moyen_traite":25000,"nb_retards_12m":2,"nb_impayes":0,"delai_moyen_jours":26,"concentration_pct":11,"nb_cheques_retournes":0,"nb_litiges":0,"secteur":"Services","region":"Ariana","type_client":"PME","banque_domiciliation":"UIB"}},
-
-    # ── MODÉRÉS (score attendu 35-55) ────────────────────────────────────────
-    {"nom":"MOD-01", "expected":"~38 MODÉRÉ",  "data":{"anciennete_annees":6,"nb_contrats_actifs":3,"montant_encours_tnd":200000,"ca_annuel_tnd":900000,"nb_traites_actives":8,"montant_moyen_traite":25000,"nb_retards_12m":2,"nb_impayes":0,"delai_moyen_jours":30,"concentration_pct":14,"nb_cheques_retournes":0,"nb_litiges":0,"secteur":"Transport","region":"Sousse","type_client":"PME","banque_domiciliation":"STB"}},
-    {"nom":"MOD-02", "expected":"~42 MODÉRÉ",  "data":{"anciennete_annees":5,"nb_contrats_actifs":3,"montant_encours_tnd":250000,"ca_annuel_tnd":950000,"nb_traites_actives":9,"montant_moyen_traite":27000,"nb_retards_12m":3,"nb_impayes":1,"delai_moyen_jours":35,"concentration_pct":16,"nb_cheques_retournes":0,"nb_litiges":0,"secteur":"BTP","region":"Kairouan","type_client":"PME","banque_domiciliation":"BNA"}},
-    {"nom":"MOD-03", "expected":"~45 MODÉRÉ",  "data":{"anciennete_annees":5,"nb_contrats_actifs":3,"montant_encours_tnd":280000,"ca_annuel_tnd":950000,"nb_traites_actives":10,"montant_moyen_traite":28000,"nb_retards_12m":3,"nb_impayes":1,"delai_moyen_jours":38,"concentration_pct":22,"nb_cheques_retournes":1,"nb_litiges":0,"secteur":"BTP","region":"Sousse","type_client":"PME","banque_domiciliation":"BNA"}},
-    {"nom":"MOD-04", "expected":"~48 MODÉRÉ",  "data":{"anciennete_annees":4,"nb_contrats_actifs":3,"montant_encours_tnd":320000,"ca_annuel_tnd":900000,"nb_traites_actives":10,"montant_moyen_traite":32000,"nb_retards_12m":4,"nb_impayes":1,"delai_moyen_jours":42,"concentration_pct":24,"nb_cheques_retournes":1,"nb_litiges":0,"secteur":"Transport","region":"Sfax","type_client":"PME","banque_domiciliation":"STB"}},
-    {"nom":"MOD-05", "expected":"~52 MODÉRÉ",  "data":{"anciennete_annees":4,"nb_contrats_actifs":2,"montant_encours_tnd":380000,"ca_annuel_tnd":850000,"nb_traites_actives":11,"montant_moyen_traite":34000,"nb_retards_12m":4,"nb_impayes":1,"delai_moyen_jours":46,"concentration_pct":26,"nb_cheques_retournes":1,"nb_litiges":1,"secteur":"Immobilier","region":"Béja","type_client":"PME","banque_domiciliation":"STB"}},
-    {"nom":"MOD-06", "expected":"~55 MODÉRÉ",  "data":{"anciennete_annees":3,"nb_contrats_actifs":2,"montant_encours_tnd":420000,"ca_annuel_tnd":800000,"nb_traites_actives":12,"montant_moyen_traite":35000,"nb_retards_12m":5,"nb_impayes":2,"delai_moyen_jours":50,"concentration_pct":28,"nb_cheques_retournes":1,"nb_litiges":1,"secteur":"BTP","region":"Kasserine","type_client":"Grande entreprise","banque_domiciliation":"BNA"}},
-
-    # ── À RISQUE (score attendu 55-75) ───────────────────────────────────────
-    {"nom":"RSQ-01", "expected":"~58 ÉLEVÉ",   "data":{"anciennete_annees":3,"nb_contrats_actifs":2,"montant_encours_tnd":480000,"ca_annuel_tnd":750000,"nb_traites_actives":13,"montant_moyen_traite":37000,"nb_retards_12m":6,"nb_impayes":2,"delai_moyen_jours":55,"concentration_pct":30,"nb_cheques_retournes":2,"nb_litiges":1,"secteur":"Transport","region":"Gafsa","type_client":"PME","banque_domiciliation":"STB"}},
-    {"nom":"RSQ-02", "expected":"~62 ÉLEVÉ",   "data":{"anciennete_annees":3,"nb_contrats_actifs":2,"montant_encours_tnd":520000,"ca_annuel_tnd":780000,"nb_traites_actives":14,"montant_moyen_traite":37000,"nb_retards_12m":6,"nb_impayes":2,"delai_moyen_jours":62,"concentration_pct":35,"nb_cheques_retournes":2,"nb_litiges":1,"secteur":"Transport","region":"Kairouan","type_client":"PME","banque_domiciliation":"STB"}},
-    {"nom":"RSQ-03", "expected":"~65 ÉLEVÉ",   "data":{"anciennete_annees":2,"nb_contrats_actifs":2,"montant_encours_tnd":600000,"ca_annuel_tnd":720000,"nb_traites_actives":15,"montant_moyen_traite":40000,"nb_retards_12m":7,"nb_impayes":3,"delai_moyen_jours":68,"concentration_pct":36,"nb_cheques_retournes":2,"nb_litiges":1,"secteur":"BTP","region":"Sidi Bouzid","type_client":"Grande entreprise","banque_domiciliation":"BNA"}},
-    {"nom":"RSQ-04", "expected":"~68 ÉLEVÉ",   "data":{"anciennete_annees":2,"nb_contrats_actifs":2,"montant_encours_tnd":650000,"ca_annuel_tnd":700000,"nb_traites_actives":15,"montant_moyen_traite":43000,"nb_retards_12m":8,"nb_impayes":3,"delai_moyen_jours":72,"concentration_pct":38,"nb_cheques_retournes":3,"nb_litiges":2,"secteur":"Immobilier","region":"Gabès","type_client":"Grande entreprise","banque_domiciliation":"STB"}},
-    {"nom":"RSQ-05", "expected":"~70 ÉLEVÉ",   "data":{"anciennete_annees":2,"nb_contrats_actifs":1,"montant_encours_tnd":720000,"ca_annuel_tnd":680000,"nb_traites_actives":16,"montant_moyen_traite":45000,"nb_retards_12m":9,"nb_impayes":3,"delai_moyen_jours":78,"concentration_pct":40,"nb_cheques_retournes":3,"nb_litiges":2,"secteur":"Transport","region":"Médenine","type_client":"Grande entreprise","banque_domiciliation":"BNA"}},
-
-    # ── TRÈS RISQUÉS (score attendu 70-85) ───────────────────────────────────
-    {"nom":"TRS-01", "expected":"~72 ÉLEVÉ",   "data":{"anciennete_annees":2,"nb_contrats_actifs":1,"montant_encours_tnd":800000,"ca_annuel_tnd":700000,"nb_traites_actives":17,"montant_moyen_traite":47000,"nb_retards_12m":9,"nb_impayes":3,"delai_moyen_jours":82,"concentration_pct":41,"nb_cheques_retournes":3,"nb_litiges":2,"secteur":"BTP","region":"Tozeur","type_client":"Grande entreprise","banque_domiciliation":"STB"}},
-    {"nom":"TRS-02", "expected":"~75 ÉLEVÉ",   "data":{"anciennete_annees":2,"nb_contrats_actifs":1,"montant_encours_tnd":900000,"ca_annuel_tnd":800000,"nb_traites_actives":18,"montant_moyen_traite":50000,"nb_retards_12m":10,"nb_impayes":4,"delai_moyen_jours":90,"concentration_pct":43,"nb_cheques_retournes":4,"nb_litiges":2,"secteur":"BTP","region":"Kébili","type_client":"Grande entreprise","banque_domiciliation":"STB"}},
-    {"nom":"TRS-03", "expected":"~77 ÉLEVÉ",   "data":{"anciennete_annees":2,"nb_contrats_actifs":1,"montant_encours_tnd":1000000,"ca_annuel_tnd":750000,"nb_traites_actives":19,"montant_moyen_traite":52000,"nb_retards_12m":11,"nb_impayes":4,"delai_moyen_jours":92,"concentration_pct":44,"nb_cheques_retournes":4,"nb_litiges":2,"secteur":"Immobilier","region":"Gafsa","type_client":"Startup","banque_domiciliation":"STB"}},
-    {"nom":"TRS-04", "expected":"~80 ÉLEVÉ",   "data":{"anciennete_annees":2,"nb_contrats_actifs":1,"montant_encours_tnd":1100000,"ca_annuel_tnd":850000,"nb_traites_actives":20,"montant_moyen_traite":55000,"nb_retards_12m":10,"nb_impayes":4,"delai_moyen_jours":95,"concentration_pct":46,"nb_cheques_retournes":4,"nb_litiges":2,"secteur":"BTP","region":"Gafsa","type_client":"Grande entreprise","banque_domiciliation":"STB"}},
-    {"nom":"TRS-05", "expected":"~82 ÉLEVÉ",   "data":{"anciennete_annees":1,"nb_contrats_actifs":1,"montant_encours_tnd":1200000,"ca_annuel_tnd":900000,"nb_traites_actives":21,"montant_moyen_traite":57000,"nb_retards_12m":12,"nb_impayes":5,"delai_moyen_jours":100,"concentration_pct":47,"nb_cheques_retournes":5,"nb_litiges":3,"secteur":"Immobilier","region":"Tataouine","type_client":"Startup","banque_domiciliation":"STB"}},
-
-    # ── CATASTROPHIQUES (score attendu > 85) ─────────────────────────────────
-    {"nom":"CAT-01", "expected":"~85 ÉLEVÉ",   "data":{"anciennete_annees":1,"nb_contrats_actifs":1,"montant_encours_tnd":1400000,"ca_annuel_tnd":750000,"nb_traites_actives":24,"montant_moyen_traite":58000,"nb_retards_12m":14,"nb_impayes":6,"delai_moyen_jours":120,"concentration_pct":55,"nb_cheques_retournes":6,"nb_litiges":3,"secteur":"BTP","region":"Tataouine","type_client":"Startup","banque_domiciliation":"STB"}},
-    {"nom":"CAT-02", "expected":"~87 ÉLEVÉ",   "data":{"anciennete_annees":1,"nb_contrats_actifs":1,"montant_encours_tnd":1600000,"ca_annuel_tnd":700000,"nb_traites_actives":26,"montant_moyen_traite":62000,"nb_retards_12m":15,"nb_impayes":6,"delai_moyen_jours":130,"concentration_pct":58,"nb_cheques_retournes":6,"nb_litiges":4,"secteur":"Immobilier","region":"Kébili","type_client":"Startup","banque_domiciliation":"STB"}},
-    {"nom":"CAT-03", "expected":"~89 ÉLEVÉ",   "data":{"anciennete_annees":1,"nb_contrats_actifs":1,"montant_encours_tnd":1800000,"ca_annuel_tnd":650000,"nb_traites_actives":27,"montant_moyen_traite":67000,"nb_retards_12m":16,"nb_impayes":7,"delai_moyen_jours":150,"concentration_pct":62,"nb_cheques_retournes":7,"nb_litiges":4,"secteur":"Transport","region":"Tozeur","type_client":"Startup","banque_domiciliation":"STB"}},
-    {"nom":"CAT-04", "expected":"~92 ÉLEVÉ",   "data":{"anciennete_annees":1,"nb_contrats_actifs":1,"montant_encours_tnd":2000000,"ca_annuel_tnd":550000,"nb_traites_actives":28,"montant_moyen_traite":71000,"nb_retards_12m":17,"nb_impayes":7,"delai_moyen_jours":160,"concentration_pct":65,"nb_cheques_retournes":7,"nb_litiges":5,"secteur":"Immobilier","region":"Tataouine","type_client":"Startup","banque_domiciliation":"STB"}},
-    {"nom":"CAT-05", "expected":"~94 ÉLEVÉ",   "data":{"anciennete_annees":1,"nb_contrats_actifs":1,"montant_encours_tnd":2500000,"ca_annuel_tnd":400000,"nb_traites_actives":30,"montant_moyen_traite":85000,"nb_retards_12m":18,"nb_impayes":8,"delai_moyen_jours":180,"concentration_pct":72,"nb_cheques_retournes":8,"nb_litiges":5,"secteur":"Immobilier","region":"Tataouine","type_client":"Startup","banque_domiciliation":"STB"}},
-
-    # ── CAS LIMITES ────────────────────────────────────────────────────────
-    {"nom":"LIM-01", "expected":"~31 MODÉRÉ — ancien mais endetté",  "data":{"anciennete_annees":20,"nb_contrats_actifs":2,"montant_encours_tnd":800000,"ca_annuel_tnd":900000,"nb_retards_12m":1,"nb_impayes":0,"delai_moyen_jours":25,"concentration_pct":10,"nb_cheques_retournes":0,"nb_litiges":0,"nb_traites_actives":8,"montant_moyen_traite":100000,"secteur":"Commerce","region":"Tunis","type_client":"Grande entreprise","banque_domiciliation":"BIAT"}},
-    {"nom":"LIM-02", "expected":"~28 FAIBLE — jeune mais excellent payeur",  "data":{"anciennete_annees":2,"nb_contrats_actifs":3,"montant_encours_tnd":20000,"ca_annuel_tnd":500000,"nb_retards_12m":0,"nb_impayes":0,"delai_moyen_jours":5,"concentration_pct":2,"nb_cheques_retournes":0,"nb_litiges":0,"nb_traites_actives":3,"montant_moyen_traite":6000,"secteur":"Distribution","region":"Sousse","type_client":"Détaillant","banque_domiciliation":"ATB"}},
-    {"nom":"LIM-03", "expected":"~45 MODÉRÉ — ratio élevé mais pas de retards",  "data":{"anciennete_annees":8,"nb_contrats_actifs":4,"montant_encours_tnd":700000,"ca_annuel_tnd":800000,"nb_retards_12m":0,"nb_impayes":0,"delai_moyen_jours":20,"concentration_pct":15,"nb_cheques_retournes":0,"nb_litiges":0,"nb_traites_actives":10,"montant_moyen_traite":70000,"secteur":"Industrie","region":"Sfax","type_client":"Grande entreprise","banque_domiciliation":"BIAT"}},
-    {"nom":"LIM-04", "expected":"~62 ÉLEVÉ — bon ratio mais très mauvais payeur",  "data":{"anciennete_annees":10,"nb_contrats_actifs":5,"montant_encours_tnd":100000,"ca_annuel_tnd":2000000,"nb_retards_12m":12,"nb_impayes":5,"delai_moyen_jours":90,"concentration_pct":5,"nb_cheques_retournes":5,"nb_litiges":3,"nb_traites_actives":8,"montant_moyen_traite":12000,"secteur":"Commerce","region":"Tunis","type_client":"Grossiste","banque_domiciliation":"ATTIJARI"}},
-    {"nom":"LIM-05", "expected":"~20 FAIBLE — secteur Autre géré correctement",  "data":{"anciennete_annees":12,"nb_contrats_actifs":6,"montant_encours_tnd":80000,"ca_annuel_tnd":1500000,"nb_retards_12m":0,"nb_impayes":0,"delai_moyen_jours":12,"concentration_pct":5,"nb_cheques_retournes":0,"nb_litiges":0,"nb_traites_actives":5,"montant_moyen_traite":16000,"secteur":"Autre","region":"Autre","type_client":"Autre","banque_domiciliation":"Autre"}},
-]
-
-print(f"{'NOM':<10} {'ATTENDU':<35} {'SCORE':>6} {'NIVEAU':<10} {'PROBA ML':>10}  {'RÉSULTAT'}")
-print("─"*100)
-
-ok = 0
-total = 0
-for c in clients:
-    r = requests.post(API, json=c["data"])
+def score(data):
+    r = requests.post(API, json=data, timeout=5)
     if r.status_code == 200:
         j = r.json()
-        score  = j["score"]
-        niveau = j["niveau"]
-        proba  = j["proba_ml"]
-        # Évaluation grossière
-        exp = c["expected"]
-        expected_score = int(exp.split("~")[1].split(" ")[0])
-        diff = abs(score - expected_score)
-        status = "✅" if diff <= 15 else "⚠️ " if diff <= 25 else "❌"
-        if diff <= 15: ok += 1
-        total += 1
-        print(f"{c['nom']:<10} {c['expected']:<35} {score:>6} {niveau:<10} {proba:>10.3f}  {status} (diff={diff:+d})")
-    else:
-        print(f"{c['nom']:<10} ❌ ERREUR HTTP {r.status_code}: {r.text[:80]}")
+        return j["score"], j["niveau"], j["proba_ml"], j["score_metier"]
+    return None, f"ERR {r.status_code}", 0, 0
 
-print("─"*100)
-print(f"\nRésultat : {ok}/{total} dans la marge ±15 points ({ok/total*100:.0f}%)")
+# ── Profil de base "neutre" — ni bon ni mauvais ──────────────────────────────
+BASE = {
+    "anciennete_annees":    6,
+    "nb_contrats_actifs":   4,
+    "montant_encours_tnd":  250000,
+    "ca_annuel_tnd":        900000,
+    "nb_traites_actives":   8,
+    "montant_moyen_traite": 30000,
+    "nb_retards_12m":       3,
+    "nb_impayes":           1,
+    "delai_moyen_jours":    35,
+    "concentration_pct":    18.0,
+    "nb_cheques_retournes": 1,
+    "nb_litiges":           0,
+    "secteur":              "Commerce",
+    "region":               "Tunis",
+    "type_client":          "Grossiste",
+    "banque_domiciliation": "ATTIJARI",
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PARTIE 1 — Sensibilité attribut par attribut
+# Chaque bloc : 6 valeurs du plus favorable au plus risqué
+# Les autres attributs = BASE
+# ─────────────────────────────────────────────────────────────────────────────
+
+SENSITIVITY_TESTS = [
+
+    # ── anciennete_annees : plus c'est vieux → moins risqué ──────────────────
+    ("ANCIENNETÉ (ans)", "anciennete_annees",
+     [(25, "très ancien → FAIBLE"),
+      (15, "ancien → FAIBLE"),
+      (8,  "moyen"),
+      (4,  "jeune"),
+      (2,  "très jeune"),
+      (1,  "nouveau → risqué")]),
+
+    # ── nb_retards_12m : plus c'est élevé → plus risqué ──────────────────────
+    ("RETARDS 12M", "nb_retards_12m",
+     [(0,  "aucun → FAIBLE"),
+      (1,  "rare"),
+      (3,  "modéré"),
+      (6,  "fréquent"),
+      (10, "très fréquent → ÉLEVÉ"),
+      (15, "systématique → ÉLEVÉ")]),
+
+    # ── nb_impayes ────────────────────────────────────────────────────────────
+    ("IMPAYÉS", "nb_impayes",
+     [(0, "aucun → FAIBLE"),
+      (1, "un seul"),
+      (2, "deux"),
+      (4, "sérieux"),
+      (6, "grave → ÉLEVÉ"),
+      (9, "critique → ÉLEVÉ")]),
+
+    # ── ratio encours/CA via montant_encours_tnd (CA fixe 900k) ──────────────
+    ("ENCOURS TND (CA=900k fixe)", "montant_encours_tnd",
+     [(45000,   "ratio 5%  → très sain"),
+      (135000,  "ratio 15% → sain"),
+      (270000,  "ratio 30% → limite"),
+      (540000,  "ratio 60% → tendu"),
+      (900000,  "ratio 100% → dangereux"),
+      (1800000, "ratio 200% → critique")]),
+
+    # ── delai_moyen_jours ─────────────────────────────────────────────────────
+    ("DÉLAI MOYEN PAIEMENT (j)", "delai_moyen_jours",
+     [(5,   "5j → excellent"),
+      (15,  "15j → bon"),
+      (30,  "30j → limite"),
+      (60,  "60j → retardataire"),
+      (90,  "90j → mauvais"),
+      (150, "150j → très mauvais")]),
+
+    # ── nb_cheques_retournes ──────────────────────────────────────────────────
+    ("CHÈQUES RETOURNÉS", "nb_cheques_retournes",
+     [(0, "aucun → FAIBLE"),
+      (1, "un"),
+      (2, "deux"),
+      (3, "trois → signal fort"),
+      (5, "cinq → grave"),
+      (8, "huit → critique")]),
+
+    # ── nb_litiges ────────────────────────────────────────────────────────────
+    ("LITIGES", "nb_litiges",
+     [(0, "aucun"),
+      (1, "un"),
+      (2, "deux"),
+      (3, "trois → sérieux"),
+      (5, "cinq → grave"),
+      (7, "sept → critique")]),
+
+    # ── concentration_pct ─────────────────────────────────────────────────────
+    ("CONCENTRATION % CA STBG", "concentration_pct",
+     [(3.0,  "3%  → sain"),
+      (10.0, "10% → normal"),
+      (20.0, "20% → seuil"),
+      (35.0, "35% → dépendance"),
+      (55.0, "55% → forte dépendance"),
+      (75.0, "75% → très forte")]),
+
+    # ── nb_contrats_actifs ────────────────────────────────────────────────────
+    ("NB CONTRATS ACTIFS", "nb_contrats_actifs",
+     [(12, "12 → portefeuille riche"),
+      (8,  "8"),
+      (5,  "5 → moyen"),
+      (3,  "3"),
+      (2,  "2 → peu diversifié"),
+      (1,  "1 → mono-contrat")]),
+
+    # ── montant_moyen_traite ─────────────────────────────────────────────────
+    ("MONTANT MOYEN TRAITE", "montant_moyen_traite",
+     [(5000,   "5k  → petites traites"),
+      (15000,  "15k → normal"),
+      (30000,  "30k → élevé"),
+      (60000,  "60k → très élevé"),
+      (100000, "100k → gros"),
+      (200000, "200k → très gros")]),
+]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PARTIE 2 — 20 profils aléatoires
+# ─────────────────────────────────────────────────────────────────────────────
+SECTEURS = ["Commerce","Industrie","BTP","Distribution","Services","Transport","Agro-alimentaire"]
+TYPES    = ["Grossiste","Détaillant","PME","Grande entreprise","Startup"]
+REGIONS  = ["Tunis","Sfax","Sousse","Monastir","Nabeul","Bizerte","Kairouan","Gabès"]
+BANQUES  = ["ATTIJARI","BIAT","BNA","STB","ATB","UIB","BH Bank"]
+
+random.seed(42)
+
+def random_profile(label=""):
+    enc = random.randint(20000, 2500000)
+    ca  = random.randint(200000, 3500000)
+    return {
+        "label":   label,
+        "data": {
+            "anciennete_annees":    random.randint(1, 25),
+            "nb_contrats_actifs":   random.randint(1, 15),
+            "montant_encours_tnd":  enc,
+            "ca_annuel_tnd":        ca,
+            "nb_traites_actives":   random.randint(1, 25),
+            "montant_moyen_traite": random.randint(3000, 150000),
+            "nb_retards_12m":       random.randint(0, 18),
+            "nb_impayes":           random.randint(0, 8),
+            "delai_moyen_jours":    random.randint(3, 180),
+            "concentration_pct":    round(random.uniform(1, 75), 1),
+            "nb_cheques_retournes": random.randint(0, 8),
+            "nb_litiges":           random.randint(0, 6),
+            "secteur":              random.choice(SECTEURS),
+            "region":               random.choice(REGIONS),
+            "type_client":          random.choice(TYPES),
+            "banque_domiciliation": random.choice(BANQUES),
+        }
+    }
+
+RANDOM_PROFILES = [random_profile(f"RND-{i+1:02d}") for i in range(20)]
+
+# ═════════════════════════════════════════════════════════════════════════════
+# RUN
+# ═════════════════════════════════════════════════════════════════════════════
+def bar(score, width=30):
+    filled = int(score / 100 * width)
+    c = "█" if score <= 30 else ("▓" if score <= 60 else "░")
+    return c * filled + "·" * (width - filled)
+
+def niveau_color(n):
+    return {"FAIBLE":"🟢","MODÉRÉ":"🟡","ÉLEVÉ":"🔴"}.get(n,"⚪")
+
+print("\n" + "═"*110)
+print("  STBG RISK — TEST DE SENSIBILITÉ DU MODÈLE")
+print("  Profil de base : ancienneté=6ans, retards=3, impayés=1, encours=250k, CA=900k, délai=35j")
+print("═"*110)
+
+# ── PARTIE 1 ─────────────────────────────────────────────────────────────────
+for (bloc_name, attr, values) in SENSITIVITY_TESTS:
+    print(f"\n{'─'*110}")
+    print(f"  📊 {bloc_name}  (les autres attributs = BASE)")
+    print(f"{'─'*110}")
+    print(f"  {'VALEUR':<10} {'DESCRIPTION':<35} {'SCORE':>5} {'NIVEAU':<10} {'ML':>6} {'METIER':>6}  {'BARRE'}")
+    print(f"  {'─'*8:<10} {'─'*33:<35} {'─'*5:>5} {'─'*8:<10} {'─'*6:>6} {'─'*6:>6}  {'─'*30}")
+    prev_score = None
+    for val, desc in values:
+        d = {**BASE, attr: val}
+        s, niv, ml, met = score(d)
+        if s is not None:
+            arrow = ""
+            if prev_score is not None:
+                diff = s - prev_score
+                arrow = f"  ↑+{diff}" if diff > 0 else (f"  ↓{diff}" if diff < 0 else "  →0")
+            print(f"  {str(val):<10} {desc:<35} {s:>5} {niveau_color(niv)} {niv:<8} {ml:>6.3f} {met:>6.1f}  {bar(s)}{arrow}")
+            prev_score = s
+        else:
+            print(f"  {str(val):<10} {desc:<35}  ❌ ERREUR")
+        time.sleep(0.05)
+
+# ── PARTIE 2 ─────────────────────────────────────────────────────────────────
+print("\n\n" + "═"*110)
+print("  20 PROFILS ALÉATOIRES — Test de plage globale")
+print("═"*110)
+print(f"\n  {'NOM':<10} {'SECTEUR':<16} {'RÉGION':<12} {'RETARDS':>7} {'IMPAYÉS':>7} {'RATIO':>7} {'DÉLAI':>6} {'SCORE':>6} {'NIV':<10} {'ML':>7}")
+print(f"  {'─'*8:<10} {'─'*14:<16} {'─'*10:<12} {'─'*7:>7} {'─'*7:>7} {'─'*7:>7} {'─'*6:>6} {'─'*5:>6} {'─'*8:<10} {'─'*7:>7}")
+
+scores_random = []
+for p in RANDOM_PROFILES:
+    d = p["data"]
+    s, niv, ml, met = score(d)
+    if s is not None:
+        ratio = round(d["montant_encours_tnd"] / max(d["ca_annuel_tnd"], 1), 2)
+        print(f"  {p['label']:<10} {d['secteur']:<16} {d['region']:<12} {d['nb_retards_12m']:>7} {d['nb_impayes']:>7} {ratio:>7.2f} {d['delai_moyen_jours']:>6} {s:>6} {niveau_color(niv)} {niv:<8} {ml:>7.3f}")
+        scores_random.append(s)
+    time.sleep(0.05)
+
+if scores_random:
+    print(f"\n  Plage : {min(scores_random)} → {max(scores_random)}")
+    print(f"  Moyenne : {sum(scores_random)/len(scores_random):.1f}")
+    faible  = sum(1 for s in scores_random if s <= 30)
+    modere  = sum(1 for s in scores_random if 30 < s <= 60)
+    eleve   = sum(1 for s in scores_random if s > 60)
+    print(f"  Répartition : 🟢 FAIBLE={faible}  🟡 MODÉRÉ={modere}  🔴 ÉLEVÉ={eleve}")
+
+# ── PARTIE 3 — Cas extrêmes ───────────────────────────────────────────────────
+print("\n\n" + "═"*110)
+print("  CAS EXTRÊMES — Vérification des bornes")
+print("═"*110)
+
+extremes = [
+    ("PARFAIT",    {"anciennete_annees":25,"nb_contrats_actifs":15,"montant_encours_tnd":10000,"ca_annuel_tnd":5000000,"nb_traites_actives":3,"montant_moyen_traite":3000,"nb_retards_12m":0,"nb_impayes":0,"delai_moyen_jours":3,"concentration_pct":1.0,"nb_cheques_retournes":0,"nb_litiges":0,"secteur":"Commerce","region":"Tunis","type_client":"Grossiste","banque_domiciliation":"BIAT"}),
+    ("CATASTROPHE",{"anciennete_annees":1,"nb_contrats_actifs":1,"montant_encours_tnd":3000000,"ca_annuel_tnd":100000,"nb_traites_actives":30,"montant_moyen_traite":100000,"nb_retards_12m":20,"nb_impayes":10,"delai_moyen_jours":200,"concentration_pct":90.0,"nb_cheques_retournes":10,"nb_litiges":8,"secteur":"BTP","region":"Tataouine","type_client":"Startup","banque_domiciliation":"STB"}),
+    ("BASE NEUTRE", BASE),
+]
+
+for name, d in extremes:
+    s, niv, ml, met = score(d)
+    print(f"  {name:<15}  score={s:>3}  {niveau_color(niv)} {niv:<10}  ML={ml:.3f}  métier={met:.1f}  {bar(s)}")
+
+print("\n" + "═"*110)
+print("  FIN DU TEST")
+print("═"*110 + "\n")

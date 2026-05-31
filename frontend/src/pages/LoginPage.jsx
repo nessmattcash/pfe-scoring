@@ -300,7 +300,8 @@ export default function LoginPage({ setPage, lang = "fr", onLogin }) {
   // ── FORGOT STEP 1 — verify code ────────────────────────────────
   const handleFgCode = e => {
     e.preventDefault()
-    if (fgCode.length !== 6) { setFgErr(t("Code à 6 chiffres requis","6-digit code required")); return }
+    const cleanCode = fgCode.replace(/\s/g,"")
+    if (cleanCode.length !== 6) { setFgErr(t("Code à 6 chiffres requis","6-digit code required")); return }
     setFgErr(""); setFgStep(2)
   }
 
@@ -312,7 +313,7 @@ export default function LoginPage({ setPage, lang = "fr", onLogin }) {
     try {
       const res = await fetch(`${API}/auth/reset`, {
         method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ email:fgEmail, code:fgCode, password:fgPwd })
+        body: JSON.stringify({ email:fgEmail, code:fgCode.replace(/\s/g,""), password:fgPwd })
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || t("Erreur","Error"))
@@ -570,11 +571,14 @@ export default function LoginPage({ setPage, lang = "fr", onLogin }) {
               {fgStep === 1 && (
                 <form onSubmit={handleFgCode}>
                   <div style={{ textAlign:"center", marginBottom:8, fontFamily:"var(--mono)", fontSize:11, color:"var(--ink-mute)" }}>
-                    {t("Code envoyé à","Code sent to")} <span style={{ color:"var(--gold)" }}>{fgEmail}</span>
+      <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ display:"block", margin:"0 auto 8px", color:"var(--gold)" }}><rect x="2" y="4" width="16" height="12" rx="2"/><path d="M3 6l7 5 7-5"/></svg>
+                    {t("Code envoyé à","Code sent to")} <strong style={{ color:"var(--gold)" }}>{fgEmail}</strong>
                   </div>
                   {fgDevCode && (
-                    <div style={{ textAlign:"center", marginBottom:8, padding:"6px 12px", background:"rgba(92,184,116,0.08)", border:"1px solid rgba(92,184,116,0.2)", borderRadius:8, fontFamily:"var(--mono)", fontSize:12, color:"#5cb874" }}>
-                      DEV → Code : <strong>{fgDevCode}</strong>
+                    <div style={{ textAlign:"center", marginBottom:16, padding:"20px", background:"linear-gradient(160deg,rgba(44,30,66,0.8),rgba(18,10,31,0.9))", border:"1px solid rgba(244,197,66,0.3)", borderRadius:14, boxShadow:"0 0 30px rgba(244,197,66,0.1)" }}>
+                      <div style={{ fontFamily:"var(--mono)", fontSize:9, color:"rgba(244,197,66,0.4)", letterSpacing:"2.5px", marginBottom:10, textTransform:"uppercase" }}>Votre code de réinitialisation</div>
+                      <div style={{ fontFamily:"var(--serif)", fontSize:42, letterSpacing:"12px", color:"var(--gold)", lineHeight:1, marginBottom:10 }}>{fgDevCode}</div>
+                      <div style={{ fontFamily:"var(--mono)", fontSize:9, color:"rgba(244,197,66,0.3)", letterSpacing:"1px" }}>Valable 15 minutes · Copiez ce code ci-dessous</div>
                     </div>
                   )}
                   <CodeInput value={fgCode} onChange={setFgCode}/>
