@@ -129,17 +129,31 @@ function SliderField({ value, onChange, min=0, max=100, step=1, suffix="", ticks
   )
 }
 
-// ── Number input — clean, no spinners ────────────────────────────────────────
-function NumInput({ value, onChange, suffix, min=0, max }) {
+// ── Number input — clean, no spinners, empty stays empty ─────────────────────
+function NumInput({ value, onChange, suffix, min=0, max, showZero=false }) {
+  const [raw, setRaw] = useState((value === 0 && !showZero) ? "" : String(value))
+
+  useEffect(() => {
+    if (value === 0 && !showZero) setRaw("")
+    else setRaw(String(value))
+  }, [value, showZero])
+
   return (
     <div className="num-input">
       <input
-        type="number" value={value} min={min} max={max}
+        type="number" value={raw} min={min} max={max}
         onChange={e => {
-          let v = e.target.value === "" ? 0 : Number(e.target.value)
+          const str = e.target.value
+          setRaw(str)
+          if (str === "" || str === "-") { onChange(0); return }
+          let v = Number(str)
+          if (isNaN(v)) return
           if (max !== undefined) v = Math.min(max, v)
           v = Math.max(min, v)
           onChange(v)
+        }}
+        onBlur={() => {
+          if (raw === "" || raw === "-") { setRaw(""); onChange(0) }
         }}
       />
       {suffix && <div className="suffix">{suffix}</div>}
@@ -183,58 +197,330 @@ function SelectWrap({ value, onChange, options }) {
   )
 }
 
-// ── Live factors ──────────────────────────────────────────────────────────────
-function computeLiveFactors(form) {
-  const v = x => Math.max(0, Math.min(100, Math.round(x)))
-  return [
-    { key:"payment",    label:"Paiement",         val: v(100 - (form.nb_retards_12m/12)*100 - (form.delai_moyen_jours/90)*30) },
-    { key:"financial",  label:"Santé financière",  val: v(100 - (form.montant_encours_tnd/Math.max(1,form.ca_annuel_tnd*0.4))*60) },
-    { key:"anciennete", label:"Ancienneté",        val: v(40 + form.anciennete_annees*3) },
-    { key:"volume",     label:"Concentration",     val: v(100 - form.concentration_pct*0.8) },
-    { key:"litigation", label:"Litiges",           val: v(100 - form.nb_impayes*18 - form.nb_litiges*12 - form.nb_cheques_retournes*14) },
-    { key:"delay",      label:"Délais",            val: v(100 - (form.delai_moyen_jours/90)*100) },
-  ]
+// ── Smart reason engine — reads real form data ────────────────────────────────
+function buildInsights(result, form) {
+  const score = result.score
+  const insights = []
+
+  // Payment behavior
+  if (form.nb_retards_12m >= 4) {
+    insights.push({ type:"risk", category:"Comportement paiement", text:`${form.nb_retards_12m} retards de paiement enregistrés sur les 12 derniers mois, ce qui dépasse le seuil acceptable de 3.` })
+  } else if (form.nb_retards_12m === 0) {
+    insights.push({ type:"strength", category:"Comportement paiement", text:`Aucun retard de paiement sur les 12 derniers mois — historique irréprochable.` })
+  } else {
+    insights.push({ type:"neutral", category:"Comportement paiement", text:`${form.nb_retards_12m} retard${form.nb_retards_12m>1?"s":""} de paiement sur 12 mois, dans la limite acceptable.` })
+  }
+
+  // Financial health
+  const ratio = form.ca_annuel_tnd > 0 ? form.montant_encours_tnd / form.ca_annuel_tnd : 0
+  if (ratio > 0.5) {
+    insights.push({ type:"risk", category:"Santé financière", text:`L'encours de ${form.montant_encours_tnd.toLocaleString()} TND représente ${Math.round(ratio*100)}% du CA annuel — ratio d'exposition élevé.` })
+  } else if (ratio < 0.15 && form.ca_annuel_tnd > 0) {
+    insights.push({ type:"strength", category:"Santé financière", text:`L'encours de ${form.montant_encours_tnd.toLocaleString()} TND est bien maîtrisé par rapport au CA annuel de ${form.ca_annuel_tnd.toLocaleString()} TND.` })
+  } else if (form.ca_annuel_tnd > 0) {
+    insights.push({ type:"neutral", category:"Santé financière", text:`Ratio encours/CA de ${Math.round(ratio*100)}% — exposition financière dans les normes.` })
+  }
+
+  // Ancienneté
+  if (form.anciennete_annees >= 10) {
+    insights.push({ type:"strength", category:"Ancienneté", text:`Relation commerciale établie depuis ${form.anciennete_annees} ans — partenaire historique, risque de rupture faible.` })
+  } else if (form.anciennete_annees <= 2) {
+    insights.push({ type:"risk", category:"Ancienneté", text:`Relation récente de ${form.anciennete_annees} an${form.anciennete_annees>1?"s":""} — historique insuffisant pour évaluer la fiabilité à long terme.` })
+  }
+
+  // Litiges & chèques
+  if (form.nb_impayes > 0 || form.nb_cheques_retournes > 0 || form.nb_litiges > 0) {
+    const parts = []
+    if (form.nb_impayes > 0) parts.push(`${form.nb_impayes} impayé${form.nb_impayes>1?"s":""}`)
+    if (form.nb_cheques_retournes > 0) parts.push(`${form.nb_cheques_retournes} chèque${form.nb_cheques_retournes>1?"s":""} retourné${form.nb_cheques_retournes>1?"s":""}`)
+    if (form.nb_litiges > 0) parts.push(`${form.nb_litiges} litige${form.nb_litiges>1?"s":""} en cours`)
+    insights.push({ type:"risk", category:"Litiges & incidents", text:`Incidents de paiement détectés : ${parts.join(", ")}.` })
+  } else {
+    insights.push({ type:"strength", category:"Litiges & incidents", text:`Aucun incident de paiement, litige ou chèque retourné — dossier propre.` })
+  }
+
+  // Concentration
+  if (form.concentration_pct > 60) {
+    insights.push({ type:"risk", category:"Concentration", text:`Concentration de ${form.concentration_pct}% du CA chez STBG — dépendance excessive, risque systémique.` })
+  } else if (form.concentration_pct < 20) {
+    insights.push({ type:"strength", category:"Concentration", text:`Portefeuille diversifié : ${form.concentration_pct}% du CA chez STBG seulement.` })
+  }
+
+  // Délai moyen
+  if (form.delai_moyen_jours > 60) {
+    insights.push({ type:"risk", category:"Délais de règlement", text:`Délai moyen de règlement de ${form.delai_moyen_jours} jours — bien au-delà des 30-45 jours standard.` })
+  } else if (form.delai_moyen_jours <= 30 && form.delai_moyen_jours > 0) {
+    insights.push({ type:"strength", category:"Délais de règlement", text:`Délai moyen de règlement de ${form.delai_moyen_jours} jours — dans les normes optimales.` })
+  }
+
+  return insights
 }
 
-// ── Result modal — pro ────────────────────────────────────────────────────────
-function ResultModal({ result, clientName, region, onClose }) {
+// ── PDF generator ─────────────────────────────────────────────────────────────
+async function generatePDF(result, form, clientName, region) {
+  const score = result.score
+  const level = result.niveau
+  const color = score <= 30 ? [92,184,116] : score <= 60 ? [232,169,61] : [211,74,74]
+  const colorHex = score <= 30 ? "#5cb874" : score <= 60 ? "#e8a93d" : "#d34a4a"
+  const insights = buildInsights(result, form)
+  const date = new Date().toLocaleDateString("fr-FR", { year:"numeric", month:"long", day:"numeric" })
+
+  // Load jsPDF UMD script (attaches to window.jspdf)
+  await new Promise((resolve, reject) => {
+    if (window.jspdf) { resolve(); return; }
+    const s = document.createElement("script")
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"
+    s.onload = resolve; s.onerror = reject
+    document.head.appendChild(s)
+  })
+  const { jsPDF } = window.jspdf
+  const doc = new jsPDF({ orientation:"portrait", unit:"mm", format:"a4" })
+  const W = 210, H = 297
+  const margin = 20
+
+  // ── Background
+  doc.setFillColor(10, 6, 18)
+  doc.rect(0, 0, W, H, "F")
+
+  // ── Gold top bar
+  doc.setFillColor(244, 197, 66)
+  doc.rect(0, 0, W, 1.5, "F")
+
+  // ── Left accent strip
+  doc.setFillColor(...color)
+  doc.rect(0, 0, 4, H, "F")
+
+  // ── Header area
+  doc.setFillColor(18, 10, 31)
+  doc.rect(4, 0, W-4, 48, "F")
+
+  // STBG logo text
+  doc.setTextColor(244, 197, 66)
+  doc.setFontSize(22)
+  doc.setFont("helvetica", "bold")
+  doc.text("STBG", margin, 20)
+  doc.setFontSize(8)
+  doc.setFont("helvetica", "normal")
+  doc.setTextColor(122, 111, 90)
+  doc.text("SOCIÉTÉ TUNISIENNE DE BOISSONS GAZEUSES", margin, 26)
+
+  // Report type
+  doc.setFontSize(9)
+  doc.setTextColor(180, 160, 120)
+  doc.text("RAPPORT D'ÉVALUATION DU RISQUE CLIENT", margin, 34)
+  doc.text(`Émis le ${date}`, margin, 40)
+
+  // Score badge — right side
+  doc.setFillColor(...color, 30)
+  doc.roundedRect(W-60, 8, 40, 32, 4, 4, "F")
+  doc.setDrawColor(...color)
+  doc.setLineWidth(0.5)
+  doc.roundedRect(W-60, 8, 40, 32, 4, 4, "S")
+  doc.setTextColor(...color)
+  doc.setFontSize(28)
+  doc.setFont("helvetica", "bold")
+  doc.text(String(score), W-40, 28, { align:"center" })
+  doc.setFontSize(8)
+  doc.setFont("helvetica", "normal")
+  doc.text("/ 100", W-40, 34, { align:"center" })
+  doc.setFontSize(7)
+  doc.text(level, W-40, 40, { align:"center" })
+
+  let y = 58
+
+  // ── Client info section
+  doc.setFillColor(24, 16, 42)
+  doc.rect(margin, y, W - margin*2, 28, "F")
+  doc.setDrawColor(60, 45, 90)
+  doc.setLineWidth(0.3)
+  doc.rect(margin, y, W - margin*2, 28, "S")
+
+  doc.setTextColor(122, 111, 90)
+  doc.setFontSize(7)
+  doc.setFont("helvetica", "normal")
+  doc.text("CLIENT", margin+6, y+7)
+  doc.text("SECTEUR", margin+70, y+7)
+  doc.text("RÉGION", margin+120, y+7)
+  doc.text("TYPE", margin+155, y+7)
+
+  doc.setTextColor(245, 239, 224)
+  doc.setFontSize(11)
+  doc.setFont("helvetica", "bold")
+  doc.text(clientName || "—", margin+6, y+17)
+  doc.setFontSize(9)
+  doc.setFont("helvetica", "normal")
+  doc.text(form.secteur || "—", margin+70, y+17)
+  doc.text(region || "—", margin+120, y+17)
+  doc.text(form.type_client || "—", margin+155, y+17)
+
+  doc.setTextColor(122,111,90)
+  doc.setFontSize(7)
+  doc.text(`Ancienneté: ${form.anciennete_annees} ans  ·  Banque: ${form.banque_domiciliation||"—"}`, margin+6, y+25)
+
+  y += 36
+
+  // ── Score gauge bar
+  doc.setTextColor(180, 160, 120)
+  doc.setFontSize(7)
+  doc.text("INDICE DE RISQUE", margin, y)
+  y += 5
+  doc.setFillColor(30, 20, 50)
+  doc.roundedRect(margin, y, W-margin*2, 5, 2, 2, "F")
+  doc.setFillColor(...color)
+  doc.roundedRect(margin, y, (W-margin*2)*(score/100), 5, 2, 2, "F")
+  doc.setTextColor(...color)
+  doc.setFontSize(7)
+  doc.text("Faible risque", margin, y+10)
+  doc.text("Risque élevé", W-margin, y+10, { align:"right" })
+  y += 16
+
+  // ── Verdict box
+  const verdict =
+    level==="FAIBLE"
+      ? "Le profil présente un niveau de risque faible. L'historique de paiement est régulier, les ratios financiers sont solides et l'ancienneté de la relation est significative. Un engagement commercial sans réserve est recommandé."
+      : level==="MODÉRÉ"
+        ? "Le profil est globalement sain mais présente des zones de vigilance. Un suivi rapproché des délais de paiement et de la concentration est conseillé avant tout engagement majeur."
+        : "Des signaux d'alerte significatifs ont été détectés. Des retards répétés, une concentration excessive ou un historique d'incidents nécessitent une revue approfondie par le comité risque avant tout engagement."
+
+  doc.setFillColor(18, 12, 30)
+  doc.setDrawColor(244, 197, 66, 40)
+  doc.roundedRect(margin, y, W-margin*2, 20, 3, 3, "FD")
+  doc.setTextColor(180, 160, 120)
+  doc.setFontSize(7)
+  const lines = doc.splitTextToSize(verdict, W-margin*2-12)
+  doc.text(lines, margin+6, y+7)
+  y += 26
+
+  // ── Section: Analyse détaillée
+  doc.setTextColor(244, 197, 66)
+  doc.setFontSize(9)
+  doc.setFont("helvetica", "bold")
+  doc.text("ANALYSE DÉTAILLÉE", margin, y)
+  doc.setDrawColor(244, 197, 66)
+  doc.setLineWidth(0.3)
+  doc.line(margin+50, y-1, W-margin, y-1)
+  y += 7
+
+  insights.forEach((ins) => {
+    const icolor = ins.type==="strength" ? [92,184,116] : ins.type==="risk" ? [211,74,74] : [180,160,120]
+    doc.setFillColor(18, 12, 30)
+    doc.setDrawColor(...icolor, 60)
+    doc.setLineWidth(0.3)
+    const textLines = doc.splitTextToSize(ins.text, W-margin*2-26)
+    const boxH = 6 + textLines.length * 4.5
+    doc.roundedRect(margin, y, W-margin*2, boxH, 2, 2, "FD")
+    // Left indicator stripe
+    doc.setFillColor(...icolor)
+    doc.roundedRect(margin, y, 3, boxH, 1, 1, "F")
+    // Category label
+    doc.setTextColor(...icolor)
+    doc.setFontSize(6.5)
+    doc.setFont("helvetica", "bold")
+    doc.text(ins.category.toUpperCase(), margin+8, y+5)
+    // Text
+    doc.setTextColor(180, 160, 120)
+    doc.setFontSize(7.5)
+    doc.setFont("helvetica", "normal")
+    doc.text(textLines, margin+8, y+10)
+    y += boxH + 4
+    if (y > H - 40) {
+      doc.addPage()
+      doc.setFillColor(10, 6, 18)
+      doc.rect(0, 0, W, H, "F")
+      doc.setFillColor(...color)
+      doc.rect(0, 0, 4, H, "F")
+      y = 20
+    }
+  })
+
+  y += 4
+
+  // ── Key metrics table
+  if (y < H - 70) {
+    doc.setTextColor(244, 197, 66)
+    doc.setFontSize(9)
+    doc.setFont("helvetica", "bold")
+    doc.text("DONNÉES CLÉS", margin, y)
+    doc.setDrawColor(244, 197, 66)
+    doc.setLineWidth(0.3)
+    doc.line(margin+38, y-1, W-margin, y-1)
+    y += 6
+
+    const metrics = [
+      ["Encours TND", `${form.montant_encours_tnd?.toLocaleString()||0} TND`],
+      ["CA Annuel", `${form.ca_annuel_tnd?.toLocaleString()||0} TND`],
+      ["Délai moyen règlement", `${form.delai_moyen_jours||0} jours`],
+      ["Traites actives", String(form.nb_traites_actives||0)],
+      ["Concentration STBG", `${form.concentration_pct||0}%`],
+    ]
+    metrics.forEach(([k,v], i) => {
+      const rowY = y + i*8
+      if (i%2===0) {
+        doc.setFillColor(20, 14, 35)
+        doc.rect(margin, rowY, W-margin*2, 8, "F")
+      }
+      doc.setTextColor(122, 111, 90)
+      doc.setFontSize(7.5)
+      doc.setFont("helvetica", "normal")
+      doc.text(k, margin+4, rowY+5.5)
+      doc.setTextColor(245, 239, 224)
+      doc.text(v, W-margin-4, rowY+5.5, { align:"right" })
+    })
+    y += metrics.length * 8 + 8
+  }
+
+  // ── Footer
+  doc.setFillColor(18, 10, 31)
+  doc.rect(0, H-14, W, 14, "F")
+  doc.setFillColor(244, 197, 66)
+  doc.rect(0, H-14, W, 0.5, "F")
+  doc.setTextColor(122, 111, 90)
+  doc.setFontSize(6.5)
+  doc.setFont("helvetica", "normal")
+  doc.text("STBG — Document confidentiel à usage interne exclusif", margin, H-6)
+  doc.text(`Score ${score}/100 · Niveau ${level} · ${date}`, W-margin, H-6, { align:"right" })
+
+  doc.save(`STBG_Risque_${(clientName||"Client").replace(/\s/g,"_")}_${score}.pdf`)
+}
+
+// ── Result modal ───────────────────────────────────────────────────────────────
+function ResultModal({ result, clientName, region, form, onClose }) {
   const [animScore, setAnimScore] = useState(0)
   const [animFill,  setAnimFill]  = useState(0)
-  const [shapW, setShapW] = useState([])
-  const [bdW,   setBdW]   = useState([])
+  const [insVisible, setInsVisible] = useState([])
+  const [factorsReady, setFactorsReady] = useState(false)
+  const [pdfLoading, setPdfLoading] = useState(false)
   const score = result.score
   const color = score <= 30 ? "#5cb874" : score <= 60 ? "#e8a93d" : "#d34a4a"
   const level = result.niveau
   const gradeItalic = level==="FAIBLE"?"sain":level==="MODÉRÉ"?"à surveiller":"critique"
   const verdict =
     level==="FAIBLE"
-      ? "Le profil est solide : historique de paiement régulier, ratios financiers favorables, ancienneté significative dans le portefeuille STBG. Engagement recommandé sans réserve."
+      ? "Profil solide — historique de paiement régulier, ratios financiers favorables, ancienneté significative. Engagement recommandé sans réserve."
       : level==="MODÉRÉ"
-        ? "Le profil est globalement sain mais présente des zones de vigilance. Les ratios financiers sont acceptables ; un suivi rapproché des délais de paiement et de la concentration est conseillé."
-        : "Le profil présente des signaux d'alerte significatifs : retards répétés, concentration excessive, historique de litiges. Une revue approfondie par le comité risque est requise avant tout engagement."
+        ? "Profil globalement sain avec des zones de vigilance. Un suivi rapproché des délais et de la concentration est conseillé."
+        : "Signaux d'alerte significatifs détectés. Une revue approfondie est requise avant tout engagement."
 
-  const maxShap = Math.max(...result.shap.map(f => Math.abs(f.value)), 1)
-  const breakdown = [
-    { label:"Comportement paiement",  val: Math.max(0, 100-(result.shap.find(f=>f.label==="nb_retards_12m")?.value||0)*8-(result.shap.find(f=>f.label==="delai_moyen_jours")?.value||0)*0.3) },
-    { label:"Santé financière",       val: Math.max(0, 100-(result.shap.find(f=>f.label==="ratio_encours_ca")?.value||0)*40) },
-    { label:"Ancienneté & relation",  val: Math.min(100, 40+(result.shap.find(f=>f.label==="anciennete_annees")?.value||0)*3) },
-    { label:"Litiges & impayés",      val: Math.max(0, 100-(result.shap.find(f=>f.label==="nb_impayes")?.value||0)*18-(result.shap.find(f=>f.label==="nb_cheques_retournes")?.value||0)*14) },
-  ].map(f => ({ ...f, val: Math.max(0, Math.min(100, Math.round(f.val))) }))
+  const insights = buildInsights(result, form)
+  const factors  = computeLiveFactors(form)
 
   useEffect(() => {
     let f=0, s=0
     const fIv = setInterval(()=>{ f+=2; setAnimFill(Math.min(score,f)); if(f>=score) clearInterval(fIv) }, 14)
     const sIv = setInterval(()=>{ s+=Math.max(1,Math.round((score-s)/5)); setAnimScore(Math.min(score,s)); if(s>=score) clearInterval(sIv) }, 25)
-    // Animate shap bars
-    result.shap.forEach((_,i) => {
-      setTimeout(()=>{ setShapW(p=>{ const n=[...p]; n[i]=Math.round(Math.abs(result.shap[i].value)/maxShap*100); return n }) }, 300+i*80)
+    insights.forEach((_,i) => {
+      setTimeout(()=>{ setInsVisible(p=>{ const n=[...p]; n[i]=1; return n }) }, 300+i*100)
     })
-    // Animate breakdown bars
-    breakdown.forEach((_,i) => {
-      setTimeout(()=>{ setBdW(p=>{ const n=[...p]; n[i]=breakdown[i].val; return n }) }, 350+i*90)
-    })
+    setTimeout(()=>setFactorsReady(true), 200)
     return () => { clearInterval(fIv); clearInterval(sIv) }
   }, [score])
+
+  const handlePDF = async () => {
+    setPdfLoading(true)
+    try { await generatePDF(result, form, clientName, region) }
+    catch(e) { console.error(e) }
+    finally { setPdfLoading(false) }
+  }
 
   return (
     <div className="result-modal" onClick={e=>e.stopPropagation()}>
@@ -246,18 +532,17 @@ function ResultModal({ result, clientName, region, onClose }) {
 
       {/* Left — bottle */}
       <div className="result-bottle-panel">
-        <Bottle fillPct={animFill} color={color} bubbles={animFill>5}/>
+        <Bottle fillPct={animFill} color={color} bubbles={animFill>5} size="small"/>
         <div className="result-bottle-region">
           {clientName || "Client"} · {region}
         </div>
       </div>
 
-      {/* Right — info */}
+      {/* Right — scrollable info */}
       <div className="result-info-panel">
-        {/* Eyebrow */}
-        <div className="result-eyebrow">Score révélé · STBG Mégrine</div>
+        <div className="result-eyebrow">Évaluation du risque · STBG</div>
 
-        {/* Big score */}
+        {/* Score */}
         <div className="result-score-block">
           <div className="result-score-line">
             <span className="result-score" style={{ color }}>{animScore}</span>
@@ -276,10 +561,7 @@ function ResultModal({ result, clientName, region, onClose }) {
         {/* Gauge */}
         <div className="result-gauge">
           <div className="result-gauge-track">
-            <div className="result-gauge-fill" style={{
-              width: `${score}%`,
-              background: `linear-gradient(90deg, #5cb874, ${color})`
-            }}/>
+            <div className="result-gauge-fill" style={{ width:`${score}%`, background:`linear-gradient(90deg, #5cb874, ${color})` }}/>
           </div>
           <div className="result-gauge-labels">
             <span>Faible</span><span>Modéré</span><span>Élevé</span>
@@ -289,50 +571,46 @@ function ResultModal({ result, clientName, region, onClose }) {
         {/* Verdict */}
         <p className="result-verdict">{verdict}</p>
 
+        {/* Factor scores */}
+        <div className="factors-eyebrow">Scores par critère</div>
+        <div className="factors-grid">
+          {factors.map(f => {
+            const c = f.val>=70?"var(--green)":f.val>=45?"var(--amber)":"var(--red)"
+            return (
+              <div key={f.key} className="factor-item">
+                <div className="factor-item-head">
+                  <span className="factor-item-label">{f.label}</span>
+                  <span className="factor-item-val" style={{ color:c }}>{f.val}</span>
+                </div>
+                <div className="factor-item-bar">
+                  <div className="factor-item-fill" style={{ width: factorsReady?`${f.val}%`:"0%", background:c }}/>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
         <div className="result-divider"/>
 
-        {/* Breakdown by factor */}
-        <div className="breakdown-eyebrow">Décomposition par facteur</div>
-        <div className="breakdown-grid">
-          {breakdown.map((f, i) => {
-            const c = f.val>=70?"#5cb874":f.val>=45?"#e8a93d":"#d34a4a"
-            return (
-              <div key={i} className="breakdown-item">
-                <div className="breakdown-item-head">
-                  <span className="breakdown-item-label">{f.label}</span>
-                  <span className="breakdown-item-val" style={{ color:c }}>{f.val}</span>
-                </div>
-                <div className="breakdown-bar">
-                  <div className="breakdown-bar-fill" style={{ width:`${bdW[i]||0}%`, background:c }}/>
-                </div>
+        {/* Insight cards */}
+        <div className="insight-eyebrow">Points clés du dossier</div>
+        <div className="insight-list">
+          {insights.map((ins, i) => (
+            <div key={i} className={`insight-card insight-${ins.type}`}
+              style={{ opacity: insVisible[i]?1:0, transform: insVisible[i]?"translateY(0)":"translateY(8px)", transition:`opacity .4s ease ${i*0.08}s, transform .4s ease ${i*0.08}s` }}>
+              <div className="insight-dot"/>
+              <div className="insight-body">
+                <div className="insight-category">{ins.category}</div>
+                <div className="insight-text">{ins.text}</div>
               </div>
-            )
-          })}
+            </div>
+          ))}
         </div>
 
-        {/* SHAP factors */}
-        <div className="shap-section">
-          <div className="shap-eyebrow">Facteurs influents (SHAP)</div>
-          {result.shap.map((f, i) => {
-            const pos = f.value > 0
-            const c = pos ? "#d34a4a" : "#5cb874"
-            return (
-              <div key={f.label} className="shap-row">
-                <span className="shap-label">{f.label}</span>
-                <div className="shap-track">
-                  <div className="shap-fill" style={{ width:`${shapW[i]||0}%`, background:c }}/>
-                </div>
-                <span className="shap-val" style={{ color:c }}>
-                  {pos?"+":""}{f.value}
-                </span>
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Actions */}
         <div className="result-actions">
-          <button className="btn-primary">Générer le rapport PDF</button>
+          <button className="btn-primary" onClick={handlePDF} disabled={pdfLoading}>
+            {pdfLoading ? "Génération…" : "Télécharger le rapport PDF"}
+          </button>
           <button className="btn-ghost" onClick={onClose}>Fermer</button>
         </div>
       </div>
@@ -340,16 +618,48 @@ function ResultModal({ result, clientName, region, onClose }) {
   )
 }
 
+// ── Live factor computation ───────────────────────────────────────────────────
+function computeLiveFactors(form) {
+  const v = x => Math.max(0, Math.min(100, Math.round(x)))
+  return [
+    { key:"payment",    label:"Paiement",         val: v(100 - (form.nb_retards_12m/12)*100 - (form.delai_moyen_jours/90)*30) },
+    { key:"financial",  label:"Santé financière",  val: v(100 - (form.montant_encours_tnd/Math.max(1,form.ca_annuel_tnd*0.4))*60) },
+    { key:"anciennete", label:"Ancienneté",        val: v(40 + form.anciennete_annees*3) },
+    { key:"volume",     label:"Concentration",     val: v(100 - form.concentration_pct*0.8) },
+    { key:"litigation", label:"Litiges",           val: v(100 - form.nb_impayes*18 - form.nb_litiges*12 - form.nb_cheques_retournes*14) },
+    { key:"delay",      label:"Délais",            val: v(100 - (form.delai_moyen_jours/90)*100) },
+  ]
+}
+
 // ── Data ──────────────────────────────────────────────────────────────────────
-const ALL_SECTEURS = [
-  "Commerce","Industrie","BTP","Agro-alimentaire","Distribution",
-  "Services","Transport","Immobilier","Hôtellerie & Restauration",
-  "Technologie","Santé","Éducation","Agriculture","Pêche","Artisanat","Autre"
+const SECTEUR_GROUPS = [
+  {
+    group: "Production & Industrie",
+    items: ["Industrie","Agro-alimentaire","Agriculture","BTP","Artisanat","Pêche"]
+  },
+  {
+    group: "Commerce & Logistique",
+    items: ["Commerce","Distribution","Transport","Immobilier","Import-Export"]
+  },
+  {
+    group: "Services & Tertiaire",
+    items: ["Services","Technologie","Santé","Éducation","Hôtellerie & Restauration","Autre"]
+  }
 ]
-const ALL_TYPES = [
-  "Grossiste","Détaillant","Grande surface","Restauration",
-  "Export","Import-Export","PME","Grande entreprise","Startup","Association","Autre"
+
+const TYPE_GROUPS = [
+  {
+    group: "Négoce",
+    items: ["Grossiste","Détaillant","Grande surface","Export","Import-Export"]
+  },
+  {
+    group: "Structure",
+    items: ["PME","Grande entreprise","Startup","Restauration","Association","Autre"]
+  }
 ]
+
+const ALL_SECTEURS = SECTEUR_GROUPS.flatMap(g => g.items)
+const ALL_TYPES    = TYPE_GROUPS.flatMap(g => g.items)
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN
@@ -387,7 +697,9 @@ export default function ScoringPage({ onRiskChange }) {
 
   const liveFactors = useMemo(() => computeLiveFactors(form), [form])
   const liveScore   = useMemo(() => Math.round(liveFactors.reduce((s,f)=>s+f.val,0)/liveFactors.length), [liveFactors])
-  const liquidColor = liveScore>=70?"#5cb874":liveScore>=50?"#f4c542":liveScore>=30?"#e8a93d":"#d34a4a"
+  // Color based on the TRUE displayed score (persisted or default 50)
+  const trueDisplayScore = persistedResult ? persistedResult.score : 50
+  const liquidColor = trueDisplayScore>=70?"#5cb874":trueDisplayScore>=50?"#f4c542":trueDisplayScore>=30?"#e8a93d":"#d34a4a"
 
   // Score delta tracking
   useEffect(() => {
@@ -446,14 +758,22 @@ export default function ScoringPage({ onRiskChange }) {
     if(onRiskChange) onRiskChange("idle")
   }
 
-  // Scroll reveal
+  // Scroll reveal — directional
   useEffect(() => {
-    const els = document.querySelectorAll(".reveal")
+    const els = document.querySelectorAll(".reveal, .reveal-left, .reveal-right")
     const io = new IntersectionObserver(entries=>{
       entries.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add("in"); io.unobserve(e.target) } })
-    }, { threshold:0.06, rootMargin:"0px 0px -30px 0px" })
+    }, { threshold:0.06, rootMargin:"0px 0px -40px 0px" })
     els.forEach(el=>io.observe(el))
     return ()=>io.disconnect()
+  }, [])
+
+  // Scroll parallax for risk card bottle
+  const [scrollY, setScrollY] = useState(0)
+  useEffect(() => {
+    const onScroll = () => setScrollY(window.scrollY)
+    window.addEventListener("scroll", onScroll, { passive: true })
+    return () => window.removeEventListener("scroll", onScroll)
   }, [])
 
   const Icon = {
@@ -466,7 +786,8 @@ export default function ScoringPage({ onRiskChange }) {
   }
 
   const clientName = [prenom, nom].filter(Boolean).join(" ")
-  const displayScore = liveScore
+  // Display the TRUE ML score (last analyzed), or 50 by default — never the broken live estimate
+  const displayScore = persistedResult ? persistedResult.score : 50
   const riskLabel = displayScore>=70?"FAIBLE":displayScore>=50?"MODÉRÉ":"ÉLEVÉ"
 
   return (
@@ -488,7 +809,7 @@ export default function ScoringPage({ onRiskChange }) {
             <div className="form-card">
 
               {/* Block 0 — Identity */}
-              <div className="form-block">
+              <div className="form-block reveal-left">
                 <div className="form-block-head">
                   <div className="form-block-icon">{Icon.user}</div>
                   <div className="form-block-title">Identité</div>
@@ -507,51 +828,63 @@ export default function ScoringPage({ onRiskChange }) {
               </div>
 
               {/* Block 1 — Profil client */}
-              <div className="form-block">
+              <div className="form-block reveal-right">
                 <div className="form-block-head">
                   <div className="form-block-icon">{Icon.profile}</div>
                   <div className="form-block-title">Profil client</div>
                   <div className="form-block-num">01 / 03</div>
                 </div>
 
-                {/* Secteur — chip grid full width */}
-                <div className="field" style={{ marginBottom:20 }}>
+                {/* Secteur — grouped text chips */}
+                <div className="field" style={{ marginBottom:24 }}>
                   <label className="field-label">Secteur d'activité</label>
-                  <div className="chip-grid">
-                    {ALL_SECTEURS.map(s => (
-                      <button key={s} type="button"
-                        className={`chip${form.secteur===s?" chip-active":""}`}
-                        onClick={()=>{ up("secteur",s); if(s!=="Autre") setAutreSecteur("") }}>
-                        {s}
-                      </button>
+                  <div className="chip-groups">
+                    {SECTEUR_GROUPS.map(g => (
+                      <div key={g.group} className="chip-group">
+                        <div className="chip-group-label">{g.group}</div>
+                        <div className="chip-row">
+                          {g.items.map(s => (
+                            <button key={s} type="button"
+                              className={`chip-pro${form.secteur===s||( s==="Autre"&&isAutreSecteur)?" chip-pro-active":""}`}
+                              onClick={()=>{ up("secteur",s); if(s!=="Autre") setAutreSecteur("") }}>
+                              {s}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
-                  {isAutreSecteur && (
-                    <div className="autre-input-wrap">
-                      <input className="text-input" type="text" placeholder="Précisez votre secteur…"
-                        value={autreSecteur} onChange={e=>{ setAutreSecteur(e.target.value); up("secteur",e.target.value||"Autre") }} autoFocus/>
-                    </div>
-                  )}
+                  <div className="autre-input-wrap" style={{ display: isAutreSecteur?"block":"none" }}>
+                    <input className="text-input" type="text" placeholder="Précisez votre secteur…"
+                      value={autreSecteur}
+                      onChange={e=>{ setAutreSecteur(e.target.value); up("secteur_libre", e.target.value) }}/>
+                  </div>
                 </div>
 
-                {/* Type client — chip grid full width */}
-                <div className="field" style={{ marginBottom:20 }}>
+                {/* Type client — grouped text chips */}
+                <div className="field" style={{ marginBottom:24 }}>
                   <label className="field-label">Type client</label>
-                  <div className="chip-grid">
-                    {ALL_TYPES.map(ty => (
-                      <button key={ty} type="button"
-                        className={`chip${form.type_client===ty?" chip-active":""}`}
-                        onClick={()=>{ up("type_client",ty); if(ty!=="Autre") setAutreType("") }}>
-                        {ty}
-                      </button>
+                  <div className="chip-groups">
+                    {TYPE_GROUPS.map(g => (
+                      <div key={g.group} className="chip-group">
+                        <div className="chip-group-label">{g.group}</div>
+                        <div className="chip-row">
+                          {g.items.map(ty => (
+                            <button key={ty} type="button"
+                              className={`chip-pro${form.type_client===ty||(ty==="Autre"&&isAutreType)?" chip-pro-active":""}`}
+                              onClick={()=>{ up("type_client",ty); if(ty!=="Autre") setAutreType("") }}>
+                              {ty}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
-                  {isAutreType && (
-                    <div className="autre-input-wrap">
-                      <input className="text-input" type="text" placeholder="Précisez le type…"
-                        value={autreType} onChange={e=>{ setAutreType(e.target.value); up("type_client",e.target.value||"Autre") }} autoFocus/>
-                    </div>
-                  )}
+                  <div className="autre-input-wrap" style={{ display: isAutreType?"block":"none" }}>
+                    <input className="text-input" type="text" placeholder="Précisez le type…"
+                      value={autreType}
+                      onChange={e=>{ setAutreType(e.target.value) }}/>
+                  </div>
                 </div>
 
                 {/* Région + Banque — 2 columns */}
@@ -576,7 +909,7 @@ export default function ScoringPage({ onRiskChange }) {
               </div>
 
               {/* Block 2 — Données financières */}
-              <div className="form-block">
+              <div className="form-block reveal-left">
                 <div className="form-block-head">
                   <div className="form-block-icon">{Icon.financial}</div>
                   <div className="form-block-title">Données financières</div>
@@ -613,7 +946,7 @@ export default function ScoringPage({ onRiskChange }) {
               </div>
 
               {/* Block 3 — Historique */}
-              <div className="form-block">
+              <div className="form-block reveal-right">
                 <div className="form-block-head">
                   <div className="form-block-icon" style={{ color:"var(--burgundy-soft)",borderColor:"rgba(168,64,79,0.4)",background:"rgba(168,64,79,0.08)" }}>{Icon.history}</div>
                   <div className="form-block-title">Historique de paiement</div>
@@ -642,7 +975,7 @@ export default function ScoringPage({ onRiskChange }) {
                   </div>
                   <div className="field">
                     <label className="field-label">Litiges en cours</label>
-                    <NumInput value={form.nb_litiges} onChange={v=>up("nb_litiges",v)} min={0}/>
+                    <NumInput value={form.nb_litiges} onChange={v=>up("nb_litiges",v)} min={0} showZero/>
                   </div>
                   <div className="field">
                     <label className="field-label">Concentration (%)</label>
@@ -666,6 +999,7 @@ export default function ScoringPage({ onRiskChange }) {
                 </button>
                 <button className="reset-btn" onClick={handleReset} type="button" title="Réinitialiser">
                   {Icon.refresh}
+                  <span>Réinitialiser</span>
                 </button>
               </div>
 
@@ -679,7 +1013,7 @@ export default function ScoringPage({ onRiskChange }) {
             {/* ── RIGHT: Risk rail ── */}
             <div className="risk-rail">
               <div className="risk-card">
-                {/* Header — client name + live badge */}
+                {/* Header — client name + status */}
                 <div className="risk-card-head">
                   <div>
                     <div className="risk-card-label">Profil analysé</div>
@@ -687,22 +1021,15 @@ export default function ScoringPage({ onRiskChange }) {
                       {clientName || <span style={{ color:"var(--ink-mute)", fontStyle:"italic", fontSize:13 }}>Nouveau client</span>}
                     </div>
                   </div>
-                  <div className="risk-card-live"><span className="dot"/>LIVE</div>
+                  {persistedResult ? (
+                    <button className="risk-see-btn" onClick={()=>setShowResult(true)}>VOIR RAPPORT</button>
+                  ) : (
+                    <div className="risk-card-live"><span className="dot"/>EN ATTENTE</div>
+                  )}
                 </div>
 
-                {/* Last result banner — persists */}
-                {persistedResult && (
-                  <div className="risk-result-banner" onClick={()=>setShowResult(true)}>
-                    <span>Dernier résultat</span>
-                    <span className="banner-score" style={{ color: persistedResult.score<=30?"#5cb874":persistedResult.score<=60?"#e8a93d":"#d34a4a" }}>
-                      {persistedResult.score} / 100
-                    </span>
-                    <span className="banner-see">VOIR →</span>
-                  </div>
-                )}
-
-                {/* Bottle */}
-                <div className="bottle-mini">
+                {/* Bottle — with scroll parallax */}
+                <div className="bottle-mini" style={{ transform:`translateY(${scrollY * 0.04}px)` }}>
                   <Bottle fillPct={displayScore} color={liquidColor} bubbles={false} size="small"/>
                 </div>
 
@@ -754,15 +1081,18 @@ export default function ScoringPage({ onRiskChange }) {
 
       {/* Result modal */}
       <div className={`result-overlay${showResult?" open":""}`}
-        onClick={e=>{ if(e.target.classList.contains("result-overlay")) setShowResult(false) }}>
-        {showResult && result && (
-          <ResultModal
-            result={result}
-            clientName={clientName}
-            region={form.region}
-            onClose={()=>setShowResult(false)}
-          />
-        )}
+        onClick={e=>{ if(e.target.classList.contains("result-overlay")||e.target.classList.contains("result-overlay-inner")) setShowResult(false) }}>
+        <div className="result-overlay-inner">
+          {showResult && result && (
+            <ResultModal
+              result={result}
+              clientName={clientName}
+              region={form.region}
+              form={form}
+              onClose={()=>setShowResult(false)}
+            />
+          )}
+        </div>
       </div>
     </>
   )

@@ -49,27 +49,40 @@ FALLBACKS = {
 
 # ── Score métier — plus haut = plus risqué (0-100) ────────────────────────────
 def compute_score_metier(d):
+    """Score métier amélioré v2 — plus de sensibilité sur tous les attributs"""
     score = 0.0
     ca = max(d['ca_annuel_tnd'], 1)
 
-    # Ratio encours/CA — facteur #1
+    # Ratio encours/CA — facteur #1 (plafond relevé)
     ratio = d['montant_encours_tnd'] / ca
-    score += min(ratio * 35, 35)
+    score += min(ratio * 28, 50)
 
-    # Historique paiement
-    score += d['nb_retards_12m']       * 3.0
-    score += d['nb_impayes']           * 7.0
-    score += d['nb_cheques_retournes'] * 5.0
-    score += d['nb_litiges']           * 8.0
+    # Historique paiement — coefficients renforcés
+    score += d['nb_retards_12m']       * 4.5
+    score += d['nb_impayes']           * 9.0
+    score += d['nb_cheques_retournes'] * 6.5
+    score += d['nb_litiges']           * 9.0
 
-    # Délai — pénalité au-delà de 30 jours
-    score += max(0, (d['delai_moyen_jours'] - 30) * 0.45)
+    # Délai — seuil abaissé à 20j (au lieu de 30j)
+    score += max(0, (d['delai_moyen_jours'] - 20) * 0.55)
 
-    # Concentration — pénalité au-delà de 20%
-    score += max(0, (d['concentration_pct'] - 20) * 0.3)
+    # Concentration — seuil abaissé à 10% (au lieu de 20%)
+    score += max(0, (d['concentration_pct'] - 10) * 0.45)
 
-    # Ancienneté — facteur positif (réduit le risque)
-    score -= min(d['anciennete_annees'] * 1.2, 18)
+    # Ancienneté — courbe continue renforcée
+    score -= min(d['anciennete_annees'] * 1.5, 22)
+
+    # Mono-contrat = risque structurel
+    if d['nb_contrats_actifs'] <= 2:
+        score += 8
+    elif d['nb_contrats_actifs'] >= 8:
+        score -= 5
+
+    # Grosses traites = exposition élevée
+    if d.get('montant_moyen_traite', 0) > 80000:
+        score += 6
+    elif d.get('montant_moyen_traite', 0) > 50000:
+        score += 3
 
     return float(np.clip(score, 0, 100))
 
@@ -87,12 +100,20 @@ def predict(client: Client):
         d[col + '_enc'] = int(le_dict[col].transform([val])[0])
 
     # ── Features dérivées
+    import math
     ca = max(d['ca_annuel_tnd'], 1)
+    ca_m = ca / 1_000_000
     d['ratio_encours_ca']   = d['montant_encours_tnd'] / ca
     d['encours_par_traite'] = d['montant_encours_tnd'] / max(d['nb_traites_actives'], 1)
     d['score_anciennete']   = 1 if d['anciennete_annees'] > 10 else (0 if d['anciennete_annees'] > 5 else -1)
     d['charge_paiement']    = d['nb_retards_12m'] + d['nb_impayes'] * 2 + d['nb_cheques_retournes'] * 3
     d['stress_financier']   = d['ratio_encours_ca'] * d['delai_moyen_jours'] / 30
+    # Nouvelles features v2
+    d['ratio_retards_ca']   = d['nb_retards_12m']  / max(ca_m, 0.01)
+    d['ratio_impayes_ca']   = d['nb_impayes']       / max(ca_m, 0.01)
+    d['anciennete_log']     = math.log1p(d['anciennete_annees'])
+    d['flag_mono_contrat']  = 1 if d['nb_contrats_actifs'] <= 2 else 0
+    d['delai_x_retards']    = d['delai_moyen_jours'] * d['nb_retards_12m']
 
     # ── Prédiction ML
     X        = pd.DataFrame([d])[features]
@@ -195,12 +216,20 @@ async def batch_predict(file: UploadFile = File(...)):
             d[col] = val  # garder la valeur corrigée
         
         # Features dérivées
+        import math
         ca = max(d['ca_annuel_tnd'], 1)
+        ca_m = ca / 1_000_000
         d['ratio_encours_ca'] = d['montant_encours_tnd'] / ca
         d['encours_par_traite'] = d['montant_encours_tnd'] / max(d['nb_traites_actives'], 1)
         d['score_anciennete'] = 1 if d['anciennete_annees'] > 10 else (0 if d['anciennete_annees'] > 5 else -1)
         d['charge_paiement'] = d['nb_retards_12m'] + d['nb_impayes'] * 2 + d['nb_cheques_retournes'] * 3
         d['stress_financier'] = d['ratio_encours_ca'] * d['delai_moyen_jours'] / 30
+        # Nouvelles features v2
+        d['ratio_retards_ca']  = d['nb_retards_12m']  / max(ca_m, 0.01)
+        d['ratio_impayes_ca']  = d['nb_impayes']       / max(ca_m, 0.01)
+        d['anciennete_log']    = math.log1p(d['anciennete_annees'])
+        d['flag_mono_contrat'] = 1 if d['nb_contrats_actifs'] <= 2 else 0
+        d['delai_x_retards']   = d['delai_moyen_jours'] * d['nb_retards_12m']
         
         # Prédiction ML
         X = pd.DataFrame([d])[features]
