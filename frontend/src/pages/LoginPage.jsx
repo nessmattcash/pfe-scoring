@@ -368,7 +368,7 @@ export default function LoginPage({ setPage, lang = "fr", onLogin }) {
             <img src="/logo.png" alt="STBG" style={{ width:"100%", height:"100%", objectFit:"contain" }}/>
           </div>
           <div>
-            <div style={{ fontFamily:"var(--serif)", fontSize:16, color:"var(--ink)" }}>STBG <span style={{ color:"var(--gold)" }}>Risk</span></div>
+            <div style={{ fontFamily:"var(--serif)", fontSize:16, color:"var(--ink)" }}>STBG<span style={{ color:"var(--gold)" }}>Risk</span></div>
             <div style={{ fontFamily:"var(--mono)", fontSize:8, color:"var(--ink-mute)", letterSpacing:"2px" }}>INTELLIGENCE PLATFORM</div>
           </div>
         </div>
@@ -492,7 +492,7 @@ export default function LoginPage({ setPage, lang = "fr", onLogin }) {
                   {t("Créer un ","Create an ")}<em style={{ color:"var(--gold)", fontStyle:"italic" }}>{t("accès","account")}</em>
                 </h1>
                 <p style={{ fontFamily:"var(--mono)", fontSize:11, color:"var(--ink-mute)", letterSpacing:"1px" }}>
-                  {t("Rejoindre la plateforme STBG Risk","Join the STBG Risk platform")}
+                  {t("Rejoindre la plateforme STBGRisk","Join the STBGRisk platform")}
                 </p>
               </div>
 
@@ -618,7 +618,7 @@ export default function LoginPage({ setPage, lang = "fr", onLogin }) {
 
           {/* Footer */}
           <div style={{ marginTop:32, display:"flex", justifyContent:"space-between", fontFamily:"var(--mono)", fontSize:9, color:"rgba(244,197,66,0.2)", letterSpacing:"1px" }}>
-            <span>STBG · BCT COMPLIANT · 2026</span>
+            <span>STBGRISK · BCT COMPLIANT · 2026</span>
             <div style={{ display:"flex", gap:8 }}>
               <span style={{ cursor:"pointer", color: lang==="fr" ? "rgba(244,197,66,0.5)" : undefined }}>FR</span>
               <span>·</span>

@@ -22,7 +22,7 @@ export default function Header({ page, setPage, user, onLogout }) {
           <img src="/logo.png" alt="STBG" style={{ width:36, height:36, objectFit:"contain", display:"block" }}/>
         </div>
         <div className="logo-text">
-          <div className="logo-name">STBG <span>Risk</span></div>
+          <div className="logo-name">STBG<span>Risk</span></div>
           <div className="logo-sub">Intelligence Platform</div>
         </div>
       </div>
@@ -40,13 +40,14 @@ export default function Header({ page, setPage, user, onLogout }) {
         <a href="#dashboard" className={page==="dashboard"?"active":""} onClick={e=>{e.preventDefault();setPage("dashboard")}}>
           Dashboard
         </a>
+        {user?.role==="Administrateur" && (
+          <a href="#admin" className={page==="admin"?"active":""} onClick={e=>{e.preventDefault();setPage("admin")}}>
+            Admin
+          </a>
+        )}
       </nav>
 
       <div className="header-right">
-        <div className="status-pill">
-          <span className="dot"/>
-          {lang==="fr"?"Actif":"Live"}
-        </div>
         <div className="lang-toggle">
           <button className={lang==="fr"?"active":""} onClick={() => setLang("fr")}>FR</button>
           <button className={lang==="en"?"active":""} onClick={() => setLang("en")}>EN</button>

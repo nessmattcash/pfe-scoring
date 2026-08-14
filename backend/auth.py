@@ -1,6 +1,6 @@
 """
-STBG Risk Platform — Auth module
-SQLite + bcrypt + JWT
+STBGRisk — Auth module
+SQLite + argon2 + JWT
 """
 import sqlite3, secrets, time, hashlib
 from datetime import datetime, timedelta
@@ -51,19 +51,36 @@ def init_db():
     """)
     conn.commit()
 
-    # Create default admin if no users
+    # Create default users if the table is empty
     if not conn.execute("SELECT 1 FROM users LIMIT 1").fetchone():
         conn.execute("""
             INSERT INTO users (name, email, role, password, created_at)
             VALUES (?, ?, ?, ?, ?)
         """, (
             "Khlifi Ayoub",
-            "ayoub@stbg.tn",
+            "ayoub@stbgrisk.tn",
             "Administrateur",
             pwd_ctx.hash("stbg2026"),
             datetime.now().isoformat()
         ))
         conn.commit()
+
+    # Ensure the requested admin account always exists (idempotent — safe to
+    # run on every startup, won't duplicate or reset an existing admin).
+    existing_admin = conn.execute("SELECT id FROM users WHERE email=?", ("admin@stbgrisk.tn",)).fetchone()
+    if not existing_admin:
+        conn.execute("""
+            INSERT INTO users (name, email, role, password, created_at)
+            VALUES (?, ?, ?, ?, ?)
+        """, (
+            "Administrateur",
+            "admin@stbgrisk.tn",
+            "Administrateur",
+            pwd_ctx.hash("admin1234"),
+            datetime.now().isoformat()
+        ))
+        conn.commit()
+
     conn.close()
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -194,3 +211,12 @@ def reset(body: ResetIn):
 @router.get("/me")
 def me(user=Depends(get_current_user)):
     return {"user": {k: user[k] for k in ("id","name","email","role")}}
+
+@router.get("/users")
+def list_users(user=Depends(get_current_user)):
+    if user["role"] != "Administrateur":
+        raise HTTPException(403, "Réservé aux administrateurs")
+    conn = get_db()
+    rows = conn.execute("SELECT id, name, email, role, created_at FROM users ORDER BY id DESC").fetchall()
+    conn.close()
+    return {"users": [dict(r) for r in rows], "total": len(rows)}

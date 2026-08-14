@@ -88,11 +88,22 @@ function useReveal() {
       if (r.top < window.innerHeight*0.95) el.classList.add("in")
       else io.observe(el)
     })
-    const onScroll = () => {
+    // Batch the fallback check into rAF instead of running it on every raw
+    // scroll tick — querySelectorAll + getBoundingClientRect force layout,
+    // and doing that dozens of times per frame (trackpads especially) was
+    // fighting the compositor and making the whole page feel less smooth.
+    let ticking = false
+    const checkReveals = () => {
       document.querySelectorAll(".hv2-reveal:not(.in),.hv2-tilt:not(.in)").forEach(el => {
         const r = el.getBoundingClientRect()
         if (r.top < window.innerHeight*0.92) { el.classList.add("in"); io.unobserve(el) }
       })
+      ticking = false
+    }
+    const onScroll = () => {
+      if (ticking) return
+      ticking = true
+      requestAnimationFrame(checkReveals)
     }
     window.addEventListener("scroll", onScroll, { passive:true })
     return () => { io.disconnect(); window.removeEventListener("scroll", onScroll) }
@@ -128,6 +139,26 @@ function Eyebrow({ num, label, center }) {
   )
 }
 
+// ── Rotating phrase — swaps the hero's italic closing every few seconds ────────
+function RotatingPhrase({ phrases }) {
+  const [i, setI] = useState(0)
+  const [visible, setVisible] = useState(true)
+  useEffect(() => {
+    if (phrases.length <= 1) return
+    const cycle = setInterval(() => {
+      setVisible(false)
+      setTimeout(() => { setI(n => (n+1) % phrases.length); setVisible(true) }, 380)
+    }, 3200)
+    return () => clearInterval(cycle)
+  }, [phrases.length])
+
+  return (
+    <em className="hv2-rotating" style={{ opacity: visible?1:0, transform: visible?"translateY(0)":"translateY(10px)" }}>
+      {phrases[i]}
+    </em>
+  )
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // SECTIONS
 // ═══════════════════════════════════════════════════════════════════
@@ -138,8 +169,10 @@ function HeroSection({ lang, onNav }) {
   const [entered, setEntered] = useState(false)
   useEffect(() => { const id = setTimeout(() => setEntered(true), 60); return () => clearTimeout(id) }, [])
 
-  const words   = lang==="fr" ? ["Le","risque","tunisien,"] : ["Tunisian","risk,","scored"]
-  const emWords = lang==="fr" ? ["servi","avec","précision."] : ["with","absolute","precision."]
+  const words = lang==="fr" ? ["Le","risque","tunisien,"] : ["Tunisian","risk,","scored"]
+  const rotatingPhrases = lang==="fr"
+    ? ["servi avec précision.", "lu avant qu'il ne coûte.", "chiffré, pas deviné.", "expliqué, pas subi."]
+    : ["served with precision.", "read before it costs you.", "measured, not guessed.", "explained, not just flagged."]
 
   return (
     <section id="sec-hero" className={`home-section-v2 hv2-hero ${entered?"entered":""}`}>
@@ -147,11 +180,11 @@ function HeroSection({ lang, onNav }) {
         <div className="home-content-half left">
           <div className="hv2-eyebrow">
             <span className="dot"/>
-{t("STBG · PFE 2026 · Khlifi Ayoub","STBG · PFE 2026 · Khlifi Ayoub")}
+{t("Scoring crédit intelligent · STBGRisk","Intelligent credit scoring · STBGRisk")}
           </div>
           <h1 className={`hv2-h1 ${entered?"entered":""}`}>
             {words.map((w,i) => <span key={i} className="word"><span>{w}</span></span>).reduce((a,b,i) => [a," ",b])}
-            {" "}<em>{emWords.map((w,i) => <span key={i} className="word"><span>{w}</span></span>).reduce((a,b,i) => [a," ",b])}</em>
+            {" "}<RotatingPhrase phrases={rotatingPhrases}/>
           </h1>
           <p className="hv2-lead">
             {t(
@@ -169,8 +202,7 @@ function HeroSection({ lang, onNav }) {
           <div className="hv2-meta">
             <span>XGBOOST · 60%</span><span className="sep">·</span>
             <span>RULES · 40%</span><span className="sep">·</span>
-            <span>BCT COMPLIANT</span><span className="sep">·</span>
-            <span>FÉV – JUIN 2026</span>
+            <span>BCT COMPLIANT</span>
           </div>
         </div>
       </div>
@@ -401,10 +433,10 @@ function CreatorSection({ lang }) {
     <section id="sec-team" className="home-section-v2">
       <div className="home-section-wrap">
         <div className="home-content-center hv2-reveal" style={{ textAlign:"center", marginBottom:40 }}>
-          <Eyebrow num="06" label={t("Créateur","Creator")} center/>
-          <h2 className="hv2-title">{t("Conçu et développé par ","Designed and built by ")}<em>Khlifi Ayoub.</em></h2>
+          <Eyebrow num="06" label={t("À l'origine du projet","Behind the project")} center/>
+          <h2 className="hv2-title">{t("Une initiative pilotée par ","An initiative led by ")}<em>Khlifi Ayoub.</em></h2>
           <p className="hv2-lead-sm" style={{ margin:"0 auto" }}>
-            {t("Projet de fin d'études — Février à Juin 2026. Ingénieur informatique, spécialisation Data Science & IA.","Final year project — February to June 2026. Computer engineering, Data Science & AI specialization.")}
+            {t("Finance digitale, spécialisation Data & IA appliquées au risque de crédit.","Digital finance, specialization in Data & AI applied to credit risk.")}
           </p>
         </div>
         <div className="hv2-reveal d2" style={{ maxWidth:520, margin:"0 auto" }}>
@@ -426,11 +458,8 @@ function CreatorSection({ lang }) {
             </div>
             {/* Name & role */}
             <div style={{ fontFamily:"var(--serif)", fontSize:28, color:"var(--ink)", marginBottom:8, position:"relative" }}>Khlifi Ayoub</div>
-            <div style={{ fontFamily:"var(--mono)", fontSize:10, color:"var(--gold)", letterSpacing:"3px", textTransform:"uppercase", marginBottom:6, position:"relative" }}>
-              {t("Ingénieur · Data Science · IA","Engineer · Data Science · AI")}
-            </div>
-            <div style={{ fontFamily:"var(--mono)", fontSize:9, color:"rgba(244,197,66,0.4)", letterSpacing:"2px", marginBottom:24, position:"relative" }}>
-              PFE 2026 · STBG MÉGRINE
+            <div style={{ fontFamily:"var(--mono)", fontSize:10, color:"var(--gold)", letterSpacing:"3px", textTransform:"uppercase", marginBottom:24, position:"relative" }}>
+              {t("Finance Digitale · Data & IA","Digital Finance · Data & AI")}
             </div>
             <div style={{ height:1, background:"rgba(244,197,66,0.1)", margin:"0 0 24px", position:"relative" }}/>
             <p style={{ fontSize:14, color:"var(--ink-dim)", lineHeight:1.7, margin:"0 0 24px", position:"relative" }}>
@@ -618,7 +647,7 @@ export default function HomePage({ setPage, lang = "fr" }) {
     window.addEventListener("mousemove", onMove, { passive:true })
 
     // rAF loop — lerp current → target, write directly to DOM
-    const LERP_SPEED = 0.12
+    const LERP_SPEED = 0.09
     const loop = () => {
       const p = rawScroll.current
       const mx = rawMx.current
@@ -652,11 +681,15 @@ export default function HomePage({ setPage, lang = "fr" }) {
       c.rot   += (trot   - c.rot)   * LERP_SPEED
       c.scale += (tscale - c.scale) * LERP_SPEED
 
-      // Write directly to DOM — zero React re-render
+      // Write directly to DOM — zero React re-render.
+      // Use a single translate3d instead of left/top so the browser can
+      // composite this on the GPU without recalculating layout every frame —
+      // this is what actually made the travel feel smoother, not just the lerp.
       if (bottleRef.current) {
-        bottleRef.current.style.left    = `${c.bx}%`
-        bottleRef.current.style.top     = `${c.by}vh`
-        bottleRef.current.style.transform = `translate(-50%,-50%) rotate(${c.rot}deg) scale(${c.scale})`
+        const px = (c.bx / 100) * window.innerWidth
+        const py = (c.by / 100) * window.innerHeight
+        bottleRef.current.style.transform =
+          `translate3d(${px}px,${py}px,0) translate(-50%,-50%) rotate(${c.rot}deg) scale(${c.scale})`
       }
       if (raysRef.current) {
         raysRef.current.style.left = `${c.bx}%`
@@ -723,6 +756,7 @@ export default function HomePage({ setPage, lang = "fr" }) {
 
         .hv2-h1{font-family:var(--serif);font-size:clamp(48px,6vw,84px);font-weight:400;line-height:1.02;letter-spacing:-.03em;color:var(--ink);margin:0 0 24px}
         .hv2-h1 em{color:var(--gold);font-style:italic;display:block}
+        .hv2-rotating{transition:opacity .38s ease, transform .38s ease; min-height:1em}
         .hv2-h1 .word{display:inline-block;overflow:hidden}
         .hv2-h1 .word span{display:inline-block;transform:translateY(100%);transition:transform .7s cubic-bezier(0.16,1,0.3,1)}
         .hv2-h1.entered .word span{transform:translateY(0)}
@@ -866,12 +900,12 @@ export default function HomePage({ setPage, lang = "fr" }) {
 
       {/* Traveling bottle — DOM-driven via ref, zero React re-render */}
       <div ref={bottleRef} style={{
-        position:"fixed", left:"75%", top:"30vh",
+        position:"fixed", left:0, top:0,
         width:"28vh", height:"60vh",
-        transform:"translate(-50%,-50%) rotate(-8deg) scale(0.95)",
+        transform:"translate3d(75vw,30vh,0) translate(-50%,-50%) rotate(-8deg) scale(0.95)",
         pointerEvents:"none", zIndex:3,
         filter:"drop-shadow(0 24px 48px rgba(0,0,0,0.5))",
-        willChange:"transform,left,top",
+        willChange:"transform",
       }}>
         <Bottle fillPct={fillPct} color={liquidColor}/>
       </div>

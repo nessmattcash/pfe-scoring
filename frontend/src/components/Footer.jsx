@@ -12,7 +12,7 @@ export default function Footer({ setPage }) {
               <img src="/logo.png" alt="STBG" style={{ width: 36, height: 36, objectFit: "contain", display: "block" }}/>
             </div>
             <div className="logo-text">
-              <div className="logo-name">STBG <span>Risk</span></div>
+              <div className="logo-name">STBG<span>Risk</span></div>
               <div className="logo-sub">Intelligence Platform</div>
             </div>
           </div>
@@ -41,15 +41,14 @@ export default function Footer({ setPage }) {
 
         <div className="footer-col">
           <h4>Contact</h4>
-          <a href="mailto:risk@stbg.tn">risk@stbg.tn</a>
+          <a href="mailto:risk@stbgrisk.tn">risk@stbgrisk.tn</a>
           <a href="#" onClick={e=>e.preventDefault()}>+216 71 XXX XXX</a>
           <a href="#" onClick={e=>e.preventDefault()}>STBG Mégrine</a>
-          <a href="#" onClick={e=>e.preventDefault()}>Khlifi Ayoub · PFE 2026</a>
         </div>
       </div>
 
       <div className="footer-bot">
-        <span>© STBG 2026 · {lang==="fr"?"Tous droits réservés":"All rights reserved"}</span>
+        <span>© STBGRisk 2026 · {lang==="fr"?"Tous droits réservés":"All rights reserved"}</span>
         <span>v2.0 — XGBoost · BCT-Compliant</span>
       </div>
     </footer>

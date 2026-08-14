@@ -250,18 +250,33 @@ async def batch_predict(file: UploadFile = File(...)):
             niveau, decision = "FAIBLE", "Accorder le crédit"
         
         # Construction du résultat avec valeurs propres (pas de NaN)
+        # IMPORTANT : on renvoie TOUTES les colonnes d'origine (pas un sous-ensemble),
+        # sinon l'export CSV du frontend — qui construit son en-tête à partir des
+        # colonnes du fichier importé — se décale et mélange les valeurs.
         result = {
-            "prenom": str(d.get("prenom", "")),
-            "nom": str(d.get("nom", "")),
-            "secteur": str(d["secteur"]),
-            "region": str(d["region"]),
-            "montant_encours_tnd": float(d["montant_encours_tnd"]),
-            "delai_moyen_jours": float(d["delai_moyen_jours"]),
-            "score": int(score_final),
-            "niveau": str(niveau),
-            "decision": str(decision),
-            "proba_ml": float(round(proba_ml, 4)),
-            "score_metier": float(round(score_metier, 1)),
+            "prenom":               str(d.get("prenom", "")),
+            "nom":                  str(d.get("nom", "")),
+            "secteur":              str(d["secteur"]),
+            "type_client":          str(d["type_client"]),
+            "region":               str(d["region"]),
+            "banque_domiciliation": str(d["banque_domiciliation"]),
+            "montant_encours_tnd":  float(d["montant_encours_tnd"]),
+            "ca_annuel_tnd":        float(d["ca_annuel_tnd"]),
+            "anciennete_annees":    float(d["anciennete_annees"]),
+            "nb_traites_actives":   float(d["nb_traites_actives"]),
+            "montant_moyen_traite": float(d["montant_moyen_traite"]),
+            "nb_contrats_actifs":   float(d["nb_contrats_actifs"]),
+            "nb_retards_12m":       float(d["nb_retards_12m"]),
+            "nb_impayes":           float(d["nb_impayes"]),
+            "delai_moyen_jours":    float(d["delai_moyen_jours"]),
+            "nb_cheques_retournes": float(d["nb_cheques_retournes"]),
+            "nb_litiges":           float(d["nb_litiges"]),
+            "concentration_pct":    float(d["concentration_pct"]),
+            "score":                int(score_final),
+            "niveau":               str(niveau),
+            "decision":             str(decision),
+            "proba_ml":             float(round(proba_ml, 4)),
+            "score_metier":         float(round(score_metier, 1)),
         }
         results.append(result)
     

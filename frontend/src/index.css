@@ -1,4 +1,4 @@
-/* ============ STBG Risk — Design System FINAL ============ */
+/* ============ STBGRisk — Design System FINAL ============ */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body, #root { width: 100%; min-height: 100vh; }
@@ -129,12 +129,6 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .nav a.active { color: var(--ink); border-bottom-color: var(--gold); }
 .nav a:hover { color: var(--ink); }
 .header-right { display: flex; align-items: center; gap: 16px; }
-.status-pill {
-  display: flex; align-items: center; gap: 6px;
-  padding: 5px 10px; border: 1px solid rgba(92,184,116,0.3); border-radius: 999px;
-  font-size: 11px; font-family: var(--mono); color: var(--green); background: rgba(92,184,116,0.06);
-}
-.status-pill .dot { width: 6px; height: 6px; background: var(--green); border-radius: 50%; box-shadow: 0 0 8px var(--green); animation: pulse 2s ease-in-out infinite; }
 @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.4} }
 .lang-toggle { display: flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
 .lang-toggle button { padding: 6px 10px; font-size: 11px; font-family: var(--mono); color: var(--ink-dim); transition: background .2s ease, color .2s ease; }
@@ -155,7 +149,7 @@ main { position: relative; }
   transition: opacity .7s var(--ease-out-expo), transform .7s var(--ease-out-expo);
   will-change: transform, opacity;
 }
-.reveal.in { opacity: 1; transform: translate3d(0,0,0); }
+.reveal.in { opacity: 1; transform: none; will-change: auto; }
 .reveal-d1 { transition-delay: .08s; }
 .reveal-d2 { transition-delay: .16s; }
 .reveal-d3 { transition-delay: .24s; }
@@ -164,13 +158,13 @@ main { position: relative; }
   transition: opacity .65s var(--ease-out-expo), transform .65s var(--ease-out-expo);
   will-change: transform, opacity;
 }
-.reveal-left.in { opacity: 1; transform: translate3d(0,0,0); }
+.reveal-left.in { opacity: 1; transform: none; will-change: auto; }
 .reveal-right {
   opacity: 0; transform: translate3d(48px, 16px, 0);
   transition: opacity .65s var(--ease-out-expo), transform .65s var(--ease-out-expo);
   will-change: transform, opacity;
 }
-.reveal-right.in { opacity: 1; transform: translate3d(0,0,0); }
+.reveal-right.in { opacity: 1; transform: none; will-change: auto; }
 
 /* ── Section headers ─────────────────────────────────────────────────────── */
 .section-eyebrow {
@@ -275,7 +269,13 @@ main { position: relative; }
 }
 
 /* ── Custom Select — Région & Banque — OPAQUE & READABLE ─────────────────── */
-.custom-select { position: relative; width: 100%; }
+.custom-select { position: relative; width: 100%; z-index: 10; }
+.custom-select.open { z-index: 100; }
+.form-block:has(.custom-select.open),
+.field:has(.custom-select.open) {
+  position: relative;
+  z-index: 50;
+}
 .custom-select-trigger {
   width: 100%; padding: 13px 16px;
   background: #140d22; border: 1px solid var(--line-strong); border-radius: 11px;
@@ -289,9 +289,9 @@ main { position: relative; }
 .select-chevron { transition: transform .25s var(--ease-out-expo); flex-shrink: 0; color: var(--gold); }
 .custom-select.open .select-chevron { transform: rotate(180deg); }
 .custom-select-dropdown {
-  position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 60;
-  background: #160f26; border: 1px solid rgba(244,197,66,0.3); border-radius: 12px;
-  box-shadow: 0 20px 50px rgba(0,0,0,0.8), 0 0 0 1px rgba(244,197,66,0.05);
+  position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 1000;
+  background: #160f26; border: 1px solid rgba(244,197,66,0.35); border-radius: 12px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.95), 0 0 0 1px rgba(244,197,66,0.1);
   max-height: 280px; overflow-y: auto; overflow-x: hidden; padding: 6px;
   animation: dropDown .2s var(--ease-out-expo);
   scrollbar-width: thin; scrollbar-color: rgba(244,197,66,0.3) transparent;
@@ -305,8 +305,8 @@ main { position: relative; }
   display: flex; justify-content: space-between; align-items: center; border-radius: 8px;
   transition: background .12s ease, color .12s ease; cursor: pointer;
 }
-.custom-select-option:hover { background: rgba(244,197,66,0.1); color: var(--ink); }
-.custom-select-option.selected { color: var(--gold); background: rgba(244,197,66,0.08); font-weight: 600; }
+.custom-select-option:hover { background: rgba(244,197,66,0.12); color: var(--ink); }
+.custom-select-option.selected { color: var(--gold); background: rgba(244,197,66,0.12); font-weight: 600; }
 .custom-select-option svg { color: var(--gold); }
 
 /* ── Slider ──────────────────────────────────────────────────────────────── */
@@ -594,3 +594,42 @@ main { position: relative; }
 .page-loader { transition: opacity .3s ease !important; }
 
 .error-message { margin-top: 20px; padding: 12px 16px; background: rgba(211,74,74,0.08); border-left: 3px solid var(--red); border-radius: 8px; font-size: 12px; color: var(--red); font-family: var(--mono); }
+
+/* ── Premium data table ──────────────────────────────────────────────────
+   Shared look for every scored-client table (Scoring Masse, Dashboard,
+   Admin). Solid header band, crisp gold rule under it, readable body text,
+   and a visible (not near-invisible) zebra stripe so rows are easy to
+   track with the eye. */
+.stbg-table-wrap {
+  border-radius: 14px;
+  border: 1px solid rgba(244,197,66,0.16);
+  background: linear-gradient(160deg,rgba(20,12,32,0.92),rgba(12,7,20,0.96));
+  overflow: hidden;
+  box-shadow: 0 10px 44px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.02);
+}
+.stbg-table { width: 100%; border-collapse: collapse; }
+.stbg-table thead tr {
+  background: linear-gradient(180deg,rgba(28,18,44,0.98),rgba(20,12,32,0.98));
+  box-shadow: 0 1px 0 rgba(244,197,66,0.35);
+}
+.stbg-table th {
+  padding: 13px 16px; text-align: left; white-space: nowrap;
+  font-family: var(--mono); font-size: 10px; letter-spacing: 1.8px; text-transform: uppercase;
+  color: rgba(244,197,66,0.72); font-weight: 700;
+  border-bottom: 2px solid rgba(244,197,66,0.3);
+}
+.stbg-table th.sortable { cursor: pointer; user-select: none; transition: color .15s ease; }
+.stbg-table th.sortable:hover { color: var(--gold); }
+.stbg-table th.active { color: var(--gold); border-bottom-color: var(--gold); }
+.stbg-table tbody tr {
+  border-bottom: 1px solid rgba(244,197,66,0.09);
+  transition: background .13s ease;
+}
+.stbg-table tbody tr:nth-child(even) { background: rgba(244,197,66,0.035); }
+.stbg-table tbody tr:hover { background: rgba(244,197,66,0.09); }
+.stbg-table td {
+  padding: 12px 16px; font-size: 13px; color: var(--ink);
+}
+.stbg-table td.mono { font-family: var(--mono); font-size: 11.5px; color: var(--ink-dim); }
+.stbg-table td.dim { color: var(--ink-dim); }
+.stbg-table td.muted { color: rgba(244,197,66,0.45); font-family: var(--mono); font-size: 10px; }

@@ -37,9 +37,9 @@ function KPI({ label, value, sub, color }) {
 }
 
 function SBadge({ score }) {
-  const c  = score<=30?"#c9a84c":score<=60?"#a87840":"#8a3030"
-  const bg = score<=30?"rgba(201,168,76,0.12)":score<=60?"rgba(168,120,64,0.12)":"rgba(138,48,48,0.15)"
-  const br = score<=30?"rgba(201,168,76,0.3)":score<=60?"rgba(168,120,64,0.3)":"rgba(138,48,48,0.35)"
+  const c  = score<=30?"#e0c268":score<=60?"#d4995a":"#e06868"
+  const bg = score<=30?"rgba(224,194,104,0.16)":score<=60?"rgba(212,153,90,0.16)":"rgba(224,104,104,0.18)"
+  const br = score<=30?"rgba(224,194,104,0.4)":score<=60?"rgba(212,153,90,0.4)":"rgba(224,104,104,0.45)"
   return (
     <span style={{ display:"inline-flex",alignItems:"center",gap:5,padding:"3px 11px",borderRadius:99,background:bg,color:c,fontFamily:"var(--mono)",fontSize:12,fontWeight:800,border:`1px solid ${br}`,letterSpacing:".5px" }}>
       {score}
@@ -49,9 +49,9 @@ function SBadge({ score }) {
 
 function LBadge({ niveau }) {
   const map = {
-    FAIBLE:  { c:"#c9a84c", bg:"rgba(201,168,76,0.08)",  br:"rgba(201,168,76,0.25)",  label:"Faible"  },
-    MODÉRÉ:  { c:"#a87030", bg:"rgba(168,112,48,0.1)",   br:"rgba(168,112,48,0.28)",  label:"Modéré"  },
-    ÉLEVÉ:   { c:"#8a2828", bg:"rgba(122,45,58,0.15)",   br:"rgba(122,45,58,0.4)",    label:"Élevé"   },
+    FAIBLE:  { c:"#e0c268", bg:"rgba(224,194,104,0.12)", br:"rgba(224,194,104,0.35)", label:"Faible"  },
+    MODÉRÉ:  { c:"#d4995a", bg:"rgba(212,153,90,0.14)",  br:"rgba(212,153,90,0.38)",  label:"Modéré"  },
+    ÉLEVÉ:   { c:"#e06868", bg:"rgba(224,104,104,0.16)", br:"rgba(224,104,104,0.42)", label:"Élevé"   },
   }
   const s = map[niveau]||map.FAIBLE
   return (
@@ -164,23 +164,18 @@ function ResultsTable({ predictions }) {
         <span style={{ marginLeft:"auto", fontFamily:"var(--mono)", fontSize:9, color:"rgba(244,197,66,0.25)", letterSpacing:"1px" }}>{filtered.length} entrées</span>
       </div>
 
-      <div style={{ borderRadius:14, border:"1px solid rgba(244,197,66,0.1)", background:"rgba(5,3,10,0.6)", overflow:"hidden", boxShadow:"0 8px 40px rgba(0,0,0,0.4)" }}>
+      <div className="stbg-table-wrap">
         <div style={{ overflowX:"auto", overflowY:"auto", maxHeight:460 }} className="stbg-scroll">
-          <table style={{ width:"100%", borderCollapse:"collapse", minWidth:920 }}>
+          <table className="stbg-table" style={{ minWidth:920 }}>
             <thead>
-              <tr style={{ background:"rgba(10,6,18,0.98)", borderBottom:"1px solid rgba(244,197,66,0.12)" }}>
+              <tr>
                 {COLS.map(col => (
                   <th key={col.key}
+                    className={col.sortable ? "sortable" : ""}
                     onClick={col.sortable?()=>toggleSort(col.key):undefined}
                     style={{
-                      padding:"11px 14px", textAlign:"left", whiteSpace:"nowrap",
-                      fontFamily:"var(--mono)", fontSize:8, letterSpacing:"2px",
-                      textTransform:"uppercase",
-                      color:sortBy===col.key?"var(--gold)":"rgba(244,197,66,0.3)",
-                      cursor:col.sortable?"pointer":"default",
-                      userSelect:"none", position:"sticky", top:0, background:"rgba(10,6,18,0.98)",
-                      transition:"color .15s",
-                      borderBottom:sortBy===col.key?"2px solid rgba(244,197,66,0.4)":"2px solid transparent"
+                      position:"sticky", top:0,
+                      background: sortBy===col.key ? "rgba(28,18,44,0.98)" : undefined,
                     }}>
                     <span style={{ display:"inline-flex",alignItems:"center",gap:4 }}>
                       {col.label}
@@ -192,22 +187,18 @@ function ResultsTable({ predictions }) {
             </thead>
             <tbody>
               {filtered.map((row,i) => (
-                <tr key={i}
-                  style={{ borderBottom:"1px solid rgba(244,197,66,0.04)", background:i%2===0?"rgba(244,197,66,0.012)":"transparent", transition:"background .15s" }}
-                  onMouseEnter={e=>e.currentTarget.style.background="rgba(244,197,66,0.04)"}
-                  onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"rgba(244,197,66,0.012)":"transparent"}
-                >
-                  <td style={{ padding:"10px 14px",fontSize:9,color:"rgba(244,197,66,0.25)",fontFamily:"var(--mono)" }}>{String(i+1).padStart(2,"0")}</td>
-                  <td style={{ padding:"10px 14px",fontSize:12,color:"var(--ink-dim)",whiteSpace:"nowrap" }}>{row.prenom||<span style={{ color:"rgba(244,197,66,0.2)",fontStyle:"italic",fontSize:10 }}>—</span>}</td>
-                  <td style={{ padding:"10px 14px",fontSize:12,color:"var(--ink)",fontWeight:500,whiteSpace:"nowrap" }}>{row.nom||<span style={{ color:"rgba(244,197,66,0.2)",fontStyle:"italic",fontSize:10 }}>—</span>}</td>
-                  <td style={{ padding:"10px 14px",fontSize:11,color:"var(--ink-dim)",whiteSpace:"nowrap" }}>{row.secteur}</td>
-                  <td style={{ padding:"10px 14px",fontSize:11,color:"var(--ink-dim)",whiteSpace:"nowrap" }}>{row.region}</td>
-                  <td style={{ padding:"10px 14px",fontFamily:"var(--mono)",fontSize:11,color:"var(--ink-dim)",whiteSpace:"nowrap" }}>{fmtN(row.montant_encours_tnd)} <span style={{ fontSize:9,color:"rgba(244,197,66,0.3)" }}>TND</span></td>
-                  <td style={{ padding:"10px 14px",fontFamily:"var(--mono)",fontSize:11,color:"var(--ink-dim)",whiteSpace:"nowrap" }}>{fmtN(row.ca_annuel_tnd)} <span style={{ fontSize:9,color:"rgba(244,197,66,0.3)" }}>TND</span></td>
-                  <td style={{ padding:"10px 14px",fontFamily:"var(--mono)",fontSize:11,color:"var(--ink-dim)",textAlign:"center" }}>{row.anciennete_annees}<span style={{ fontSize:9,color:"rgba(244,197,66,0.3)" }}>a</span></td>
-                  <td style={{ padding:"10px 14px" }}><SBadge score={row.score}/></td>
-                  <td style={{ padding:"10px 14px" }}><LBadge niveau={row.niveau}/></td>
-                  <td style={{ padding:"10px 14px",fontSize:11,color:row.score<=30?"#c9a84c":row.score<=60?"#a87030":"#7a2d3a",whiteSpace:"nowrap",fontWeight:500 }}>{row.decision}</td>
+                <tr key={i}>
+                  <td className="muted">{String(i+1).padStart(2,"0")}</td>
+                  <td className="dim" style={{ whiteSpace:"nowrap" }}>{row.prenom||<span style={{ color:"rgba(244,197,66,0.25)",fontStyle:"italic",fontSize:11 }}>—</span>}</td>
+                  <td style={{ fontWeight:600, whiteSpace:"nowrap" }}>{row.nom||<span style={{ color:"rgba(244,197,66,0.25)",fontStyle:"italic",fontSize:11 }}>—</span>}</td>
+                  <td className="dim" style={{ whiteSpace:"nowrap" }}>{row.secteur}</td>
+                  <td className="dim" style={{ whiteSpace:"nowrap" }}>{row.region}</td>
+                  <td className="mono" style={{ whiteSpace:"nowrap" }}>{fmtN(row.montant_encours_tnd)} <span style={{ color:"rgba(244,197,66,0.4)" }}>TND</span></td>
+                  <td className="mono" style={{ whiteSpace:"nowrap" }}>{fmtN(row.ca_annuel_tnd)} <span style={{ color:"rgba(244,197,66,0.4)" }}>TND</span></td>
+                  <td className="mono" style={{ textAlign:"center" }}>{row.anciennete_annees}<span style={{ color:"rgba(244,197,66,0.4)" }}>a</span></td>
+                  <td><SBadge score={row.score}/></td>
+                  <td><LBadge niveau={row.niveau}/></td>
+                  <td style={{ fontSize:12,color:row.score<=30?"#d4b862":row.score<=60?"#c68f52":"#c85a5a",whiteSpace:"nowrap",fontWeight:600 }}>{row.decision}</td>
                 </tr>
               ))}
             </tbody>

@@ -74,7 +74,7 @@ export default function Loader({ active }) {
           </div>
         </div>
         <div style={{ fontFamily:"var(--serif,serif)", fontSize:20, color:"#f5efe0", letterSpacing:".5px" }}>
-          STBG <span style={{ color:"#f4c542" }}>Risk</span>
+          STBG<span style={{ color:"#f4c542" }}>Risk</span>
         </div>
         <div style={{ display:"flex", alignItems:"center", gap:10, fontFamily:"var(--mono,monospace)", fontSize:9, color:"rgba(244,197,66,0.4)", letterSpacing:"3px" }}>
           <span>CHARGEMENT</span>

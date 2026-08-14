@@ -349,55 +349,47 @@ function ClientTable({ predictions }) {
       </div>
 
       {/* Scrollable table */}
-      <div style={{ overflowX:"auto", overflowY:"auto", maxHeight:400, scrollbarWidth:"thin", scrollbarColor:"rgba(201,168,76,0.2) transparent" }}
-        className="stbg-scroll">
-        <table style={{ width:"100%", borderCollapse:"collapse", minWidth:860 }}>
-          <thead>
-            <tr style={{ background:"rgba(10,6,18,0.96)", borderBottom:"1px solid rgba(244,197,66,0.1)", position:"sticky", top:0, zIndex:2 }}>
-              {COLS.map(col => (
-                <th key={col.key} onClick={col.sortable?()=>toggleSort(col.key):undefined} style={{
-                  padding:"10px 12px", textAlign:"left", fontFamily:"var(--mono)", fontSize:8,
-                  letterSpacing:"1.5px", textTransform:"uppercase",
-                  color:sortBy===col.key?"var(--gold)":"rgba(244,197,66,0.3)",
-                  cursor:col.sortable?"pointer":"default", userSelect:"none",
-                  transition:"color .15s", whiteSpace:"nowrap",
-                  borderBottom:sortBy===col.key?"2px solid rgba(244,197,66,0.35)":"2px solid transparent",
-                  background:"rgba(10,6,18,0.96)"
-                }}>
-                  {col.label}{sortBy===col.key && <span style={{ marginLeft:3, fontSize:9 }}>{sortDir==="desc"?"↓":"↑"}</span>}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((row, i) => (
-              <tr key={i}
-                style={{ borderBottom:"1px solid rgba(244,197,66,0.04)", background:i%2===0?"rgba(244,197,66,0.01)":"transparent", transition:"background .12s" }}
-                onMouseEnter={e=>e.currentTarget.style.background="rgba(244,197,66,0.035)"}
-                onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"rgba(244,197,66,0.01)":"transparent"}
-              >
-                <td style={{ padding:"9px 12px", fontFamily:"var(--mono)", fontSize:9, color:"rgba(244,197,66,0.25)" }}>{String(i+1).padStart(2,"0")}</td>
-                <td style={{ padding:"9px 12px", fontSize:12, color:"var(--ink)", fontWeight:500, whiteSpace:"nowrap" }}>{(row.prenom||row.nom)?`${row.prenom||""} ${row.nom||""}`.trim():<span style={{ color:"rgba(244,197,66,0.2)",fontStyle:"italic",fontSize:10 }}>—</span>}</td>
-                <td style={{ padding:"9px 12px", fontSize:11, color:"var(--ink-dim)", whiteSpace:"nowrap" }}>{row.secteur}</td>
-                <td style={{ padding:"9px 12px", fontSize:11, color:"var(--ink-dim)", whiteSpace:"nowrap" }}>{row.region}</td>
-                <td style={{ padding:"9px 12px", fontFamily:"var(--mono)", fontSize:10, color:"var(--ink-dim)", whiteSpace:"nowrap" }}>{Number(row.montant_encours_tnd||0).toLocaleString("fr-TN")}<span style={{ fontSize:8,color:"rgba(244,197,66,0.22)",marginLeft:3 }}>TND</span></td>
-                <td style={{ padding:"9px 12px", fontFamily:"var(--mono)", fontSize:10, color:"var(--ink-dim)", whiteSpace:"nowrap" }}>{Number(row.ca_annuel_tnd||0).toLocaleString("fr-TN")}<span style={{ fontSize:8,color:"rgba(244,197,66,0.22)",marginLeft:3 }}>TND</span></td>
-                <td style={{ padding:"9px 12px", fontFamily:"var(--mono)", fontSize:10, color:"var(--ink-dim)", textAlign:"center" }}>{row.anciennete_annees}<span style={{ fontSize:8,color:"rgba(244,197,66,0.22)" }}>a</span></td>
-                <td style={{ padding:"9px 12px" }}>
-                  <span style={{ display:"inline-flex",alignItems:"center",gap:4,padding:"2px 9px",borderRadius:99,fontFamily:"var(--mono)",fontSize:11,fontWeight:800,background:`${scoreColor(row.score)}18`,color:scoreColor(row.score),border:`1px solid ${scoreColor(row.score)}30` }}>{row.score}</span>
-                </td>
-                <td style={{ padding:"9px 12px" }}>
-                  {(() => {
-                    const map = {FAIBLE:{c:"#c9a84c",bg:"rgba(201,168,76,0.1)"},MODÉRÉ:{c:"#a06028",bg:"rgba(160,96,40,0.1)"},ÉLEVÉ:{c:"#7a2d3a",bg:"rgba(122,45,58,0.12)"}}
-                    const s = map[row.niveau]||map.FAIBLE
-                    return <span style={{ padding:"2px 9px",borderRadius:99,fontFamily:"var(--mono)",fontSize:10,fontWeight:700,letterSpacing:"1px",background:s.bg,color:s.c,border:`1px solid ${s.c}28` }}>{row.niveau}</span>
-                  })()}
-                </td>
-                <td style={{ padding:"9px 12px", fontSize:10, color:scoreColor(row.score), fontWeight:500 }}>{row.decision}</td>
+      <div className="stbg-table-wrap" style={{ border:"none", borderRadius:0, boxShadow:"none" }}>
+        <div style={{ overflowX:"auto", overflowY:"auto", maxHeight:400 }} className="stbg-scroll">
+          <table className="stbg-table" style={{ minWidth:860 }}>
+            <thead>
+              <tr>
+                {COLS.map(col => (
+                  <th key={col.key}
+                    className={col.sortable ? "sortable" : ""}
+                    onClick={col.sortable?()=>toggleSort(col.key):undefined}
+                    style={{ position:"sticky", top:0, zIndex:2, background: sortBy===col.key ? "rgba(28,18,44,0.98)" : undefined }}>
+                    {col.label}{sortBy===col.key && <span style={{ marginLeft:3, fontSize:10, color:"var(--gold)" }}>{sortDir==="desc"?"↓":"↑"}</span>}
+                  </th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filtered.map((row, i) => (
+                <tr key={i}>
+                  <td className="muted">{String(i+1).padStart(2,"0")}</td>
+                  <td style={{ fontWeight:600, whiteSpace:"nowrap" }}>{(row.prenom||row.nom)?`${row.prenom||""} ${row.nom||""}`.trim():<span style={{ color:"rgba(244,197,66,0.25)",fontStyle:"italic",fontSize:11 }}>—</span>}</td>
+                  <td className="dim" style={{ whiteSpace:"nowrap" }}>{row.secteur}</td>
+                  <td className="dim" style={{ whiteSpace:"nowrap" }}>{row.region}</td>
+                  <td className="mono" style={{ whiteSpace:"nowrap" }}>{Number(row.montant_encours_tnd||0).toLocaleString("fr-TN")}<span style={{ color:"rgba(244,197,66,0.4)",marginLeft:3 }}>TND</span></td>
+                  <td className="mono" style={{ whiteSpace:"nowrap" }}>{Number(row.ca_annuel_tnd||0).toLocaleString("fr-TN")}<span style={{ color:"rgba(244,197,66,0.4)",marginLeft:3 }}>TND</span></td>
+                  <td className="mono" style={{ textAlign:"center" }}>{row.anciennete_annees}<span style={{ color:"rgba(244,197,66,0.4)" }}>a</span></td>
+                  <td>
+                    <span style={{ display:"inline-flex",alignItems:"center",gap:4,padding:"2px 9px",borderRadius:99,fontFamily:"var(--mono)",fontSize:12,fontWeight:800,background:`${scoreColor(row.score)}22`,color:scoreColor(row.score),border:`1px solid ${scoreColor(row.score)}45` }}>{row.score}</span>
+                  </td>
+                  <td>
+                    {(() => {
+                      const map = {FAIBLE:{c:"#e0c268",bg:"rgba(224,194,104,0.14)"},MODÉRÉ:{c:"#d4995a",bg:"rgba(212,153,90,0.14)"},ÉLEVÉ:{c:"#e06868",bg:"rgba(224,104,104,0.16)"}}
+                      const s = map[row.niveau]||map.FAIBLE
+                      return <span style={{ padding:"2px 9px",borderRadius:99,fontFamily:"var(--mono)",fontSize:10,fontWeight:700,letterSpacing:"1px",background:s.bg,color:s.c,border:`1px solid ${s.c}45` }}>{row.niveau}</span>
+                    })()}
+                  </td>
+                  <td style={{ fontSize:12, color:scoreColor(row.score), fontWeight:600 }}>{row.decision}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
       <div style={{ padding:"8px 22px", borderTop:"1px solid rgba(244,197,66,0.06)", background:"rgba(8,4,14,0.4)", fontFamily:"var(--mono)", fontSize:9, color:"rgba(244,197,66,0.22)", display:"flex", justifyContent:"space-between" }}>
         <span>{filtered.length} lignes · scroll vertical</span><span>↕</span>
@@ -506,6 +498,28 @@ function UploadScreen({ onData }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // MAIN
 // ═══════════════════════════════════════════════════════════════════════════════
+// ── Export helper — header derived from the data itself, so it can never
+// drift out of alignment with the values (the bug that hit the batch export) ──
+function exportDashboardCSV(predictions) {
+  if (!predictions?.length) return
+  const cols = Object.keys(predictions[0])
+  const sep = ";"
+  const header = cols.join(sep)
+  const rows = predictions.map(row =>
+    cols.map(h => {
+      let v = row[h] ?? ""
+      if (typeof v === "string" && (v.includes(sep) || v.includes('"'))) v = `"${v.replace(/"/g,'""')}"`
+      return v
+    }).join(sep)
+  )
+  const content = [header, ...rows].join("\r\n")
+  const a = Object.assign(document.createElement("a"), {
+    href: URL.createObjectURL(new Blob(["\uFEFF"+content], { type:"text/csv;charset=utf-8;" })),
+    download: "dashboard_stbgrisk.csv"
+  })
+  a.click(); URL.revokeObjectURL(a.href)
+}
+
 export default function DashboardPage() {
   const [data,      setData]      = useState(null)
   const [activeTab, setActiveTab] = useState("overview")
@@ -554,11 +568,16 @@ export default function DashboardPage() {
       return {name:b, avg:g.reduce((a,r)=>a+r.score,0)/g.length, count:g.length}
     }).sort((a,b)=>b.avg-a.avg).slice(0,8)
 
+    const typesClient = [...new Set(p.map(r=>r.type_client))].filter(Boolean).map(tc=>{
+      const g = p.filter(r=>r.type_client===tc)
+      return {name:tc, avg:g.reduce((a,r)=>a+r.score,0)/g.length, count:g.length, encours:g.reduce((a,r)=>a+(Number(r.montant_encours_tnd)||0),0)}
+    }).sort((a,b)=>b.avg-a.avg)
+
     const top10  = [...p].sort((a,b)=>b.score-a.score).slice(0,10)
     const avgColor = avg<=30?"#c9a84c":avg<=60?"#a06028":"#7a2d3a"
     const taux_risque = Math.round(eleve/p.length*100)
 
-    return { p, scores, avg, avgColor, faible, modere, eleve, encours, ca, delai, hist, secteurs, regions, banques, top10, total:p.length, taux_risque }
+    return { p, scores, avg, avgColor, faible, modere, eleve, encours, ca, delai, hist, secteurs, regions, banques, typesClient, top10, total:p.length, taux_risque }
   }, [data])
 
   const TABS = [
@@ -612,6 +631,14 @@ export default function DashboardPage() {
                 <div style={{ width:6,height:6,borderRadius:"50%",background:"#5cb874",boxShadow:"0 0 8px #5cb874",animation:"pulse 2s infinite" }}/>
                 <span style={{ fontFamily:"var(--mono)", fontSize:9, color:"#5cb874", letterSpacing:"1.5px" }}>{stats.total} CLIENTS</span>
               </div>
+              <button onClick={()=>exportDashboardCSV(stats.p)} style={{
+                padding:"7px 14px",borderRadius:10,border:"1px solid rgba(201,168,76,0.2)",
+                background:"rgba(201,168,76,0.05)",color:"var(--gold)",
+                fontFamily:"var(--mono)",fontSize:9,letterSpacing:"1px",cursor:"pointer",transition:"all .2s"
+              }}
+                onMouseEnter={e=>{e.currentTarget.style.background="rgba(201,168,76,0.12)";e.currentTarget.style.borderColor="rgba(201,168,76,0.4)"}}
+                onMouseLeave={e=>{e.currentTarget.style.background="rgba(201,168,76,0.05)";e.currentTarget.style.borderColor="rgba(201,168,76,0.2)"}}
+              >↓ Exporter</button>
               <button onClick={()=>setData(null)} style={{
                 padding:"7px 14px",borderRadius:10,border:"1px solid rgba(244,197,66,0.14)",
                 background:"rgba(244,197,66,0.04)",color:"rgba(244,197,66,0.55)",
@@ -706,23 +733,21 @@ export default function DashboardPage() {
                   </div>
                   <span style={{ padding:"3px 12px",borderRadius:99,background:"rgba(122,45,58,0.15)",border:"1px solid rgba(122,45,58,0.28)",fontFamily:"var(--mono)",fontSize:10,color:"#a84050" }}>{stats.eleve} ÉLEVÉ</span>
                 </div>
-                <div style={{ overflowX:"auto" }} className="stbg-scroll">
-                  <table style={{ width:"100%",borderCollapse:"collapse" }}>
-                    <thead><tr style={{ background:"rgba(10,6,18,0.95)",borderBottom:"1px solid rgba(244,197,66,0.1)" }}>
-                      {["N°","Client","Secteur","Région","Encours","Score","Décision"].map(h=><th key={h} style={{ padding:"9px 12px",textAlign:"left",fontFamily:"var(--mono)",fontSize:8,letterSpacing:"2px",textTransform:"uppercase",color:"rgba(244,197,66,0.28)",whiteSpace:"nowrap" }}>{h}</th>)}
+                <div className="stbg-scroll" style={{ overflowX:"auto" }}>
+                  <table className="stbg-table">
+                    <thead><tr>
+                      {["N°","Client","Secteur","Région","Encours","Score","Décision"].map(h=><th key={h}>{h}</th>)}
                     </tr></thead>
                     <tbody>
                       {stats.top10.map((row,i)=>(
-                        <tr key={i} style={{ borderBottom:"1px solid rgba(244,197,66,0.04)",background:i%2===0?"rgba(244,197,66,0.01)":"transparent",transition:"background .12s" }}
-                          onMouseEnter={e=>e.currentTarget.style.background="rgba(122,45,58,0.08)"}
-                          onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"rgba(244,197,66,0.01)":"transparent"}>
-                          <td style={{ padding:"9px 12px",fontFamily:"var(--mono)",fontSize:9,color:"rgba(244,197,66,0.22)" }}>{String(i+1).padStart(2,"0")}</td>
-                          <td style={{ padding:"9px 12px",fontSize:12,color:"var(--ink)",fontWeight:500 }}>{(row.prenom||row.nom)?`${row.prenom||""} ${row.nom||""}`.trim():<span style={{ color:"rgba(244,197,66,0.2)",fontStyle:"italic",fontSize:10 }}>—</span>}</td>
-                          <td style={{ padding:"9px 12px",fontSize:11,color:"var(--ink-dim)" }}>{row.secteur}</td>
-                          <td style={{ padding:"9px 12px",fontSize:11,color:"var(--ink-dim)" }}>{row.region}</td>
-                          <td style={{ padding:"9px 12px",fontFamily:"var(--mono)",fontSize:10,color:"var(--ink-dim)",whiteSpace:"nowrap" }}>{Number(row.montant_encours_tnd||0).toLocaleString("fr-TN")} <span style={{ fontSize:8,color:"rgba(244,197,66,0.22)" }}>TND</span></td>
-                          <td style={{ padding:"9px 12px" }}><span style={{ display:"inline-flex",alignItems:"center",gap:4,padding:"2px 9px",borderRadius:99,fontFamily:"var(--mono)",fontSize:11,fontWeight:800,background:"rgba(122,45,58,0.18)",color:"#a84050",border:"1px solid rgba(122,45,58,0.32)" }}>{row.score}</span></td>
-                          <td style={{ padding:"9px 12px",fontSize:10,color:"#a84050",fontWeight:500 }}>{row.decision}</td>
+                        <tr key={i}>
+                          <td className="muted">{String(i+1).padStart(2,"0")}</td>
+                          <td style={{ fontWeight:600 }}>{(row.prenom||row.nom)?`${row.prenom||""} ${row.nom||""}`.trim():<span style={{ color:"rgba(244,197,66,0.25)",fontStyle:"italic",fontSize:11 }}>—</span>}</td>
+                          <td className="dim">{row.secteur}</td>
+                          <td className="dim">{row.region}</td>
+                          <td className="mono" style={{ whiteSpace:"nowrap" }}>{Number(row.montant_encours_tnd||0).toLocaleString("fr-TN")} <span style={{ color:"rgba(244,197,66,0.4)" }}>TND</span></td>
+                          <td><span style={{ display:"inline-flex",alignItems:"center",gap:4,padding:"2px 9px",borderRadius:99,fontFamily:"var(--mono)",fontSize:12,fontWeight:800,background:"rgba(224,104,104,0.18)",color:"#e06868",border:"1px solid rgba(224,104,104,0.45)" }}>{row.score}</span></td>
+                          <td style={{ fontSize:12,color:"#e06868",fontWeight:600 }}>{row.decision}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -791,22 +816,20 @@ export default function DashboardPage() {
                   
                 </div>
                 <div className="stbg-scroll" style={{ overflowX:"auto" }}>
-                  <table style={{ width:"100%",borderCollapse:"collapse" }}>
-                    <thead><tr style={{ background:"rgba(10,6,18,0.95)",borderBottom:"1px solid rgba(244,197,66,0.1)" }}>
-                      {["N°","Client","Secteur","Région","Score","Niveau","Décision"].map(h=><th key={h} style={{ padding:"9px 12px",textAlign:"left",fontFamily:"var(--mono)",fontSize:8,letterSpacing:"2px",textTransform:"uppercase",color:"rgba(244,197,66,0.28)",whiteSpace:"nowrap" }}>{h}</th>)}
+                  <table className="stbg-table">
+                    <thead><tr>
+                      {["N°","Client","Secteur","Région","Score","Niveau","Décision"].map(h=><th key={h}>{h}</th>)}
                     </tr></thead>
                     <tbody>
                       {stats.top10.map((row,i)=>(
-                        <tr key={i} style={{ borderBottom:"1px solid rgba(244,197,66,0.04)",background:i%2===0?"rgba(244,197,66,0.01)":"transparent",transition:"background .12s" }}
-                          onMouseEnter={e=>e.currentTarget.style.background="rgba(122,45,58,0.08)"}
-                          onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"rgba(244,197,66,0.01)":"transparent"}>
-                          <td style={{ padding:"9px 12px",fontFamily:"var(--mono)",fontSize:9,color:"rgba(244,197,66,0.22)" }}>{String(i+1).padStart(2,"0")}</td>
-                          <td style={{ padding:"9px 12px",fontSize:12,color:"var(--ink)",fontWeight:500 }}>{(row.prenom||row.nom)?`${row.prenom||""} ${row.nom||""}`.trim():<span style={{ color:"rgba(244,197,66,0.2)",fontStyle:"italic" }}>—</span>}</td>
-                          <td style={{ padding:"9px 12px",fontSize:11,color:"var(--ink-dim)" }}>{row.secteur}</td>
-                          <td style={{ padding:"9px 12px",fontSize:11,color:"var(--ink-dim)" }}>{row.region}</td>
-                          <td style={{ padding:"9px 12px" }}><span style={{ padding:"2px 9px",borderRadius:99,fontFamily:"var(--mono)",fontSize:11,fontWeight:800,background:"rgba(122,45,58,0.18)",color:"#a84050",border:"1px solid rgba(122,45,58,0.32)" }}>{row.score}</span></td>
-                          <td style={{ padding:"9px 12px" }}><span style={{ padding:"2px 9px",borderRadius:99,fontFamily:"var(--mono)",fontSize:10,fontWeight:700,background:"rgba(122,45,58,0.1)",color:"#a84050",border:"1px solid rgba(122,45,58,0.25)" }}>ÉLEVÉ</span></td>
-                          <td style={{ padding:"9px 12px",fontSize:10,color:"#a84050",fontWeight:500 }}>{row.decision}</td>
+                        <tr key={i}>
+                          <td className="muted">{String(i+1).padStart(2,"0")}</td>
+                          <td style={{ fontWeight:600 }}>{(row.prenom||row.nom)?`${row.prenom||""} ${row.nom||""}`.trim():<span style={{ color:"rgba(244,197,66,0.25)",fontStyle:"italic" }}>—</span>}</td>
+                          <td className="dim">{row.secteur}</td>
+                          <td className="dim">{row.region}</td>
+                          <td><span style={{ padding:"2px 9px",borderRadius:99,fontFamily:"var(--mono)",fontSize:12,fontWeight:800,background:"rgba(224,104,104,0.18)",color:"#e06868",border:"1px solid rgba(224,104,104,0.45)" }}>{row.score}</span></td>
+                          <td><span style={{ padding:"2px 9px",borderRadius:99,fontFamily:"var(--mono)",fontSize:10,fontWeight:700,background:"rgba(224,104,104,0.14)",color:"#e06868",border:"1px solid rgba(224,104,104,0.4)" }}>ÉLEVÉ</span></td>
+                          <td style={{ fontSize:12,color:"#e06868",fontWeight:600 }}>{row.decision}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -901,6 +924,33 @@ export default function DashboardPage() {
                     ))}
                   </div>
                 </Card>
+              </div>
+            </Sec>
+          )}
+
+          {stats.typesClient.length > 0 && (
+            <Sec label="Analyse par type de client" num="03">
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16 }}>
+                <div className="db db-d1">
+                  <Card>
+                    <CH title="Score moyen par type"/>
+                    {stats.typesClient.map((tc,i)=>(
+                      <HBar key={tc.name} label={tc.name} value={tc.avg} max={100}
+                        color={tc.avg<=30?"#c9a84c":tc.avg<=60?"#a06028":"#7a2d3a"}
+                        sub={`${tc.count} clients`} delay={i*55}/>
+                    ))}
+                  </Card>
+                </div>
+                <div className="db db-d2">
+                  <Card>
+                    <CH title="Exposition par type"/>
+                    {stats.typesClient.map((tc,i)=>(
+                      <HBar key={tc.name} label={tc.name} value={tc.encours/1e6}
+                        max={Math.max(...stats.typesClient.map(x=>x.encours/1e6),1)}
+                        color="#c9a84c" sub={`${tc.count} clients`} delay={i*55}/>
+                    ))}
+                  </Card>
+                </div>
               </div>
             </Sec>
           )}

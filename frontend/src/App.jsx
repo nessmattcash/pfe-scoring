@@ -9,10 +9,12 @@ import LoginPage from "./pages/LoginPage"
 import ScoringPage from "./pages/ScoringPage"
 import MassScoringPage from "./pages/MassScoringPage"
 import DashboardPage from "./pages/DashboardPage"
+import AdminDashboardPage from "./pages/AdminDashboardPage"
 import HomePage from "./pages/HomePage"
 
-const PAGES     = ["home","scoring","masse","dashboard","login"]
-const PROTECTED = ["scoring","masse","dashboard"]
+const PAGES     = ["home","scoring","masse","dashboard","admin","login"]
+const PROTECTED = ["scoring","masse","dashboard","admin"]
+const ADMIN_ONLY = ["admin"]
 
 export default function App() {
   const [lang,     setLang]    = useState("fr")
@@ -33,8 +35,22 @@ export default function App() {
       const token = localStorage.getItem("stbg_token") || sessionStorage.getItem("stbg_token")
       if (!token) return
       const payload = JSON.parse(atob(token.split(".")[1]))
-      if (payload.exp * 1000 < Date.now()) { localStorage.removeItem("stbg_token"); return }
-      const u = { token, name: payload.name || payload.email, email: payload.email, role: "Analyste" }
+      if (payload.exp * 1000 < Date.now()) {
+        localStorage.removeItem("stbg_token"); localStorage.removeItem("stbg_user")
+        sessionStorage.removeItem("stbg_token"); sessionStorage.removeItem("stbg_user")
+        return
+      }
+      // Prefer the real user record (name/role) saved at login time.
+      // Falling back to the JWT payload alone would lose the role and
+      // silently downgrade an admin to "Analyste" on every page refresh.
+      const savedUser = localStorage.getItem("stbg_user") || sessionStorage.getItem("stbg_user")
+      const parsed = savedUser ? JSON.parse(savedUser) : null
+      const u = {
+        token,
+        name:  parsed?.name  || payload.name || payload.email,
+        email: parsed?.email || payload.email,
+        role:  parsed?.role  || "Analyste",
+      }
       setUser(u); userRef.current = u
     } catch {}
   }, [])
@@ -43,6 +59,11 @@ export default function App() {
   useEffect(() => {
     const hash = window.location.hash.slice(1)
     if (PAGES.includes(hash)) { setPageRaw(hash); pageRef.current = hash }
+  }, [])
+
+  // Page title
+  useEffect(() => {
+    document.title = "STBGRisk · Intelligence Platform"
   }, [])
 
   const navigate = (target) => {
@@ -58,18 +79,24 @@ export default function App() {
   }
 
   const setPage = (newPage) => {
-    const target = PROTECTED.includes(newPage) && !userRef.current ? "login" : newPage
+    let target = newPage
+    if (PROTECTED.includes(newPage) && !userRef.current) target = "login"
+    else if (ADMIN_ONLY.includes(newPage) && userRef.current?.role !== "Administrateur") target = "home"
     navigate(target)
   }
 
   const handleLogin = (userData) => {
+    // Keep the user record (name/role) in sync with wherever the token was stored,
+    // so a refresh restores the real role instead of defaulting to Analyste.
+    const store = localStorage.getItem("stbg_token") ? localStorage : sessionStorage
+    store.setItem("stbg_user", JSON.stringify(userData))
     setUser(userData); userRef.current = userData
-    navigate("home")
+    navigate(userData?.role === "Administrateur" ? "admin" : "home")
   }
 
   const handleLogout = () => {
-    localStorage.removeItem("stbg_token")
-    sessionStorage.removeItem("stbg_token")
+    localStorage.removeItem("stbg_token"); localStorage.removeItem("stbg_user")
+    sessionStorage.removeItem("stbg_token"); sessionStorage.removeItem("stbg_user")
     setUser(null); userRef.current = null
     navigate("home")
   }
@@ -90,6 +117,7 @@ export default function App() {
         {page === "scoring"   && <ScoringPage   onRiskChange={setRisk}/>}
         {page === "masse"     && <MassScoringPage/>}
         {page === "dashboard" && <DashboardPage/>}
+        {page === "admin"     && <AdminDashboardPage user={user} lang={lang} setPage={setPage}/>}
         {page === "login"     && <LoginPage     setPage={setPage} lang={lang} onLogin={handleLogin}/>}
       </main>
 
